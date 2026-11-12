@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+html, body, #root { min-height: 100%; }
+body {
+  margin: 0;
+  background: #060a13;
+  color: #cbd5e1;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.panel {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.85), rgba(10, 15, 28, 0.85));
+  border: 1px solid rgba(51, 65, 85, 0.6);
+  border-radius: 0.875rem;
+}
+
+.leaflet-container { background: #0b1220; font-family: var(--font-sans); }
+.leaflet-tooltip {
+  background: #0f172a; color: #e2e8f0; border: 1px solid #334155; box-shadow: none; font-size: 12px;
+}
+.leaflet-tooltip-top:before { border-top-color: #334155; }
+.leaflet-control-attribution { background: rgba(2, 6, 23, 0.7) !important; color: #64748b !important; }
+.leaflet-control-attribution a { color: #94a3b8 !important; }
+
+.scroll-thin { scrollbar-width: thin; scrollbar-color: #334155 transparent; }
+
+@keyframes pulse-ring { 0% { transform: scale(0.8); opacity: 0.8 } 100% { transform: scale(2.2); opacity: 0 } }
+.live-dot::after {
+  content: ""; position: absolute; inset: 0; border-radius: 9999px; background: currentColor;
+  animation: pulse-ring 1.8s ease-out infinite;
+}

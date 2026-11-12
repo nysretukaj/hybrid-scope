@@ -1,0 +1,373 @@
+{
+  "scenario": {
+    "name": "Exercise GRIDLOCK",
+    "disclaimer": "SYNTHETIC EXERCISE DATA. Real place names, fictional events, outlets, actors and CVE numbers. Analysis blocks were precomputed by Claude at build time.",
+    "version": 1
+  },
+  "signals": [
+    {
+      "id": "k01", "hours_ago": 62, "source_name": "Telegram: Voice of the Valley", "source_type": "social", "reliability": 0.25,
+      "title": "Channel claims Kosovo grid is 'days from collapse'",
+      "text": "Telegram channel Voice of the Valley tells its 48k followers that the Kosovo power grid will collapse within days and that the government in Pristina is hiding it. Followers are urged to buy generators and withdraw cash. #BlackoutKosovo",
+      "analysis": {
+        "category": "disinformation", "tags": [], "severity": 0.45, "confidence": 0.8,
+        "rationale": "Unsubstantiated alarmist claim paired with a call to action (cash withdrawal) - a classic panic-seeding narrative from an anonymous, low-reliability channel.",
+        "entities": {"actors": ["Voice of the Valley"], "technologies": ["Telegram"], "narratives": ["#BlackoutKosovo", "grid collapse"]}
+      }
+    },
+    {
+      "id": "k02", "hours_ago": 56, "source_name": "Forum monitor", "source_type": "forum", "reliability": 0.4,
+      "title": "Coordinated amplification of #BlackoutKosovo",
+      "text": "More than 40 newly created accounts posted near-identical messages about an imminent blackout in Kosovo within 90 minutes, reusing the same image and phrasing. Several of the accounts previously amplified Voice of the Valley content.",
+      "analysis": {
+        "category": "disinformation", "tags": [], "severity": 0.55, "confidence": 0.85,
+        "rationale": "Coordinated inauthentic behaviour: account-creation burst, copy-paste text and synchronised timing amplifying the same narrative.",
+        "entities": {"actors": ["Voice of the Valley"], "narratives": ["#BlackoutKosovo", "grid collapse"]}
+      }
+    },
+    {
+      "id": "k03", "hours_ago": 50, "source_name": "SecVendor Threat Blog", "source_type": "research", "reliability": 0.75,
+      "title": "Spear-phishing wave targets Kosovo energy sector staff",
+      "text": "A spear-phishing campaign is targeting employees of the national grid operator and the state power utility in Pristina with fake Ministry of Economy invoices. The lure document drops a loader previously associated with the GreyMist intrusion set.",
+      "analysis": {
+        "category": "cyber", "tags": ["infrastructure"], "severity": 0.65, "confidence": 0.8,
+        "rationale": "Targeted spear-phishing against critical-infrastructure staff with tooling overlap to a known intrusion set - likely initial-access phase.",
+        "entities": {"actors": ["GreyMist"], "orgs": ["national grid operator", "Ministry of Economy"], "technologies": ["malicious loader"]}
+      }
+    },
+    {
+      "id": "k04", "hours_ago": 42, "source_name": "National CERT advisory", "source_type": "advisory", "reliability": 0.92,
+      "title": "CVE-2026-41877: actively exploited flaw in SCADA HMI software",
+      "text": "An authentication bypass (CVE-2026-41877) in a widely deployed SCADA HMI product is being actively exploited. Internet-exposed instances were identified at energy operators in Kosovo and North Macedonia. Operators should patch and restrict remote access immediately.",
+      "analysis": {
+        "category": "cyber", "tags": ["infrastructure"], "severity": 0.8, "confidence": 0.9,
+        "rationale": "Authoritative advisory on an actively exploited ICS vulnerability with exposed instances in the region's energy sector.",
+        "entities": {"technologies": ["SCADA", "HMI"], "orgs": ["national grid operator"]}
+      }
+    },
+    {
+      "id": "k05", "hours_ago": 32, "source_name": "Regional news wire", "source_type": "news", "reliability": 0.75,
+      "title": "DDoS knocks e-Kosova portal offline for three hours",
+      "text": "The government e-services portal e-Kosova was unavailable for about three hours after a distributed denial-of-service attack. A group calling itself GreyMist claimed responsibility on Telegram, citing 'corruption in the energy sector'. Officials in Pristina said no data was compromised.",
+      "analysis": {
+        "category": "cyber", "tags": ["disinformation"], "severity": 0.6, "confidence": 0.85,
+        "rationale": "Confirmed service disruption with a public claim; the 'energy corruption' framing echoes the ongoing blackout narrative, linking the cyber and information threads.",
+        "entities": {"actors": ["GreyMist"], "orgs": ["e-Kosova"], "technologies": ["Telegram"], "narratives": ["energy corruption"]}
+      }
+    },
+    {
+      "id": "k06", "hours_ago": 28, "source_name": "Fact-check desk", "source_type": "research", "reliability": 0.8,
+      "title": "Deepfake video shows minister announcing power rationing",
+      "text": "A manipulated video in which Kosovo's economy minister appears to announce nationwide power rationing is spreading on TikTok and Telegram. Lip-sync artefacts and a cloned voice indicate a deepfake. The ministry in Pristina denied any rationing plans.",
+      "analysis": {
+        "category": "disinformation", "tags": [], "severity": 0.7, "confidence": 0.9,
+        "rationale": "Synthetic media impersonating an official; directly reinforces the #BlackoutKosovo narrative and could trigger panic buying.",
+        "entities": {"orgs": ["Ministry of Economy"], "technologies": ["TikTok", "Telegram", "deepfake"], "narratives": ["#BlackoutKosovo", "power rationing"]}
+      }
+    },
+    {
+      "id": "k07", "hours_ago": 21, "source_name": "Regional news wire", "source_type": "news", "reliability": 0.8,
+      "title": "Unscheduled outage hits substation near Obiliq",
+      "text": "An unscheduled outage at a substation near Obiliq left parts of Pristina without electricity for two hours. The national grid operator said it is investigating a 'technical anomaly' in its control systems and has not ruled out external interference.",
+      "analysis": {
+        "category": "infrastructure", "tags": ["cyber"], "severity": 0.75, "confidence": 0.85,
+        "rationale": "Real-world impact on critical infrastructure; the operator cites a control-system anomaly, consistent with the SCADA exploitation advisory issued 21h earlier.",
+        "entities": {"orgs": ["national grid operator"], "technologies": ["SCADA"]}
+      }
+    },
+    {
+      "id": "k08", "hours_ago": 19, "source_name": "Geolocated social posts", "source_type": "social", "reliability": 0.5,
+      "title": "Residents report drones over Obiliq power plant",
+      "text": "Multiple geolocated posts show small drones circling the power plant near Obiliq after dark. Kosovo Police confirmed they received reports and are investigating.",
+      "analysis": {
+        "category": "physical", "tags": ["infrastructure"], "severity": 0.6, "confidence": 0.7,
+        "rationale": "Possible reconnaissance of a critical site two hours after an outage, partially corroborated by a police statement.",
+        "entities": {"orgs": ["Kosovo Police"], "technologies": ["drone"]}
+      }
+    },
+    {
+      "id": "k09", "hours_ago": 15, "source_name": "Leak-site monitor", "source_type": "leak", "reliability": 0.45,
+      "title": "Access to Kosovo energy network offered for sale",
+      "text": "A post on a criminal forum offers 'VPN and SCADA access to a Kosovo energy company' for 8 BTC. The seller account has previously shared GreyMist tooling.",
+      "analysis": {
+        "category": "cyber", "tags": ["infrastructure"], "severity": 0.75, "confidence": 0.65,
+        "rationale": "Initial-access offering consistent with the earlier phishing campaign; low-reliability venue but strong entity overlap (GreyMist, SCADA).",
+        "entities": {"actors": ["GreyMist"], "orgs": ["national grid operator"], "technologies": ["VPN", "SCADA"]}
+      }
+    },
+    {
+      "id": "k10", "hours_ago": 11, "source_name": "Telegram: Voice of the Valley", "source_type": "social", "reliability": 0.25,
+      "title": "Channel calls for protest over 'corrupt blackout'",
+      "text": "Voice of the Valley claims the Obiliq outage proves government corruption and calls on supporters to gather outside the government building in Pristina tonight. #BlackoutKosovo",
+      "analysis": {
+        "category": "disinformation", "tags": ["physical"], "severity": 0.6, "confidence": 0.8,
+        "rationale": "Narrative pivots from panic to mobilisation, exploiting a real outage to drive offline action.",
+        "entities": {"actors": ["Voice of the Valley"], "narratives": ["#BlackoutKosovo", "energy corruption"]}
+      }
+    },
+    {
+      "id": "k11", "hours_ago": 8, "source_name": "Regional news wire", "source_type": "news", "reliability": 0.8,
+      "title": "Protest gathers outside government building in Pristina",
+      "text": "Several hundred people gathered outside the government building in Pristina, chanting about power cuts. Kosovo Police reinforced the area; two minor clashes were reported.",
+      "analysis": {
+        "category": "physical", "tags": [], "severity": 0.55, "confidence": 0.85,
+        "rationale": "Offline mobilisation three hours after online calls to protest; limited violence so far.",
+        "entities": {"orgs": ["Kosovo Police"], "narratives": ["energy corruption"]}
+      }
+    },
+    {
+      "id": "k12", "hours_ago": 5, "source_name": "Regional news wire", "source_type": "news", "reliability": 0.8,
+      "title": "Second grid disturbance causes rolling outages in Mitrovica and Prizren",
+      "text": "Rolling outages affected Mitrovica and Prizren after a second disturbance on the transmission network. The national grid operator switched to manual control at two substations as a precaution.",
+      "analysis": {
+        "category": "infrastructure", "tags": ["cyber"], "severity": 0.8, "confidence": 0.85,
+        "rationale": "Repeat disruption with the operator falling back to manual control - indicates suspected compromise of control systems.",
+        "entities": {"orgs": ["national grid operator"], "technologies": ["SCADA"]}
+      }
+    },
+    {
+      "id": "k13", "hours_ago": 3, "source_name": "National CERT advisory", "source_type": "advisory", "reliability": 0.92,
+      "title": "CERT confirms intrusion attempt on grid operator network",
+      "text": "Kosovo's national CERT confirmed an intrusion attempt on the grid operator's corporate network that began with the phishing campaign reported earlier this week. Indicators overlap with GreyMist and with exploitation of CVE-2026-41877.",
+      "analysis": {
+        "category": "cyber", "tags": ["infrastructure"], "severity": 0.9, "confidence": 0.92,
+        "rationale": "Authoritative confirmation tying the phishing wave, the ICS vulnerability and the intrusion set together - the cyber thread of this cluster.",
+        "entities": {"actors": ["GreyMist"], "orgs": ["national grid operator", "national CERT"], "technologies": ["SCADA"]}
+      }
+    },
+    {
+      "id": "k14", "hours_ago": 1, "source_name": "Telegram: Voice of the Valley", "source_type": "social", "reliability": 0.25,
+      "title": "Narrative shift blames 'foreign forces' and KFOR",
+      "text": "Voice of the Valley now claims KFOR and 'foreign forces' staged the outages in Kosovo to justify a security crackdown. The posts are being cross-posted to Serbian-language channels.",
+      "analysis": {
+        "category": "disinformation", "tags": ["physical"], "severity": 0.6, "confidence": 0.75,
+        "rationale": "Escalatory narrative targeting the international security presence; cross-language spread widens the audience.",
+        "entities": {"actors": ["Voice of the Valley"], "orgs": ["KFOR"], "narratives": ["foreign forces staged outages"]}
+      }
+    },
+
+    {
+      "id": "b01", "hours_ago": 98, "source_name": "Maritime tracker", "source_type": "maritime", "reliability": 0.7,
+      "title": "Cargo vessel goes dark near Finland-Estonia cable route",
+      "text": "The cargo vessel MV Northern Varg switched off its AIS transponder for nine hours while transiting the Gulf of Finland close to the route of the Finland-Estonia subsea data cable. The vessel was observed moving at unusually low speed.",
+      "analysis": {
+        "category": "physical", "tags": ["infrastructure"], "severity": 0.55, "confidence": 0.75,
+        "rationale": "AIS gap plus loitering over a critical subsea asset - a known precursor indicator of cable sabotage.",
+        "entities": {"actors": ["MV Northern Varg"], "orgs": ["Finland-Estonia subsea cable"], "technologies": ["AIS"]}
+      }
+    },
+    {
+      "id": "b02", "hours_ago": 84, "source_name": "Nordic news agency", "source_type": "news", "reliability": 0.85,
+      "title": "Finland-Estonia subsea data cable damaged",
+      "text": "Operators reported a fault on the Finland-Estonia subsea data cable in the Gulf of Finland, reducing capacity between Helsinki and Tallinn. Investigators are examining whether an anchor was dragged along the seabed.",
+      "analysis": {
+        "category": "infrastructure", "tags": ["physical"], "severity": 0.8, "confidence": 0.9,
+        "rationale": "Confirmed damage to critical subsea infrastructure 14h after a vessel went dark on the same route; possible deliberate anchor drag.",
+        "entities": {"orgs": ["Finland-Estonia subsea cable"]}
+      }
+    },
+    {
+      "id": "b03", "hours_ago": 78, "source_name": "Aviation safety notices", "source_type": "official", "reliability": 0.85,
+      "title": "GPS jamming reported over Gulf of Finland",
+      "text": "Pilots reported widespread GPS interference over the Gulf of Finland and around Narva for the third consecutive day. Aviation authorities advised crews to use alternative navigation.",
+      "analysis": {
+        "category": "physical", "tags": ["cyber"], "severity": 0.6, "confidence": 0.85,
+        "rationale": "Persistent electronic interference affecting aviation - a common component of hybrid pressure in the region.",
+        "entities": {"technologies": ["GPS", "GNSS"]}
+      }
+    },
+    {
+      "id": "b04", "hours_ago": 72, "source_name": "Telegram channel monitor", "source_type": "social", "reliability": 0.3,
+      "title": "Channels claim NATO sabotaged its own cable",
+      "text": "A cluster of Telegram channels claims NATO deliberately damaged the Finland-Estonia cable to justify a naval build-up in the Baltic Sea. The posts appeared within hours of the first news reports. #NATOsabotage",
+      "analysis": {
+        "category": "disinformation", "tags": [], "severity": 0.5, "confidence": 0.8,
+        "rationale": "Pre-emptive counter-narrative launched within hours of the incident - typical of a prepared information operation.",
+        "entities": {"orgs": ["NATO", "Finland-Estonia subsea cable"], "technologies": ["Telegram"], "narratives": ["#NATOsabotage"]}
+      }
+    },
+    {
+      "id": "b05", "hours_ago": 60, "source_name": "Regional news wire", "source_type": "news", "reliability": 0.75,
+      "title": "Hacktivist DDoS hits Tallinn port and Finnish transport sites",
+      "text": "A hacktivist group calling itself Northern Hydra launched DDoS attacks against the Port of Tallinn website and the Finnish transport agency, posting #NATOsabotage messages on its Telegram channel.",
+      "analysis": {
+        "category": "cyber", "tags": ["disinformation"], "severity": 0.55, "confidence": 0.85,
+        "rationale": "Disruptive but low-impact DDoS; reuse of the #NATOsabotage hashtag ties it to the disinformation thread.",
+        "entities": {"actors": ["Northern Hydra"], "orgs": ["Port of Tallinn"], "technologies": ["Telegram"], "narratives": ["#NATOsabotage"]}
+      }
+    },
+    {
+      "id": "b06", "hours_ago": 46, "source_name": "Grid operator bulletin", "source_type": "official", "reliability": 0.9,
+      "title": "Electricity interconnector capacity halved after subsea fault",
+      "text": "A fault on a subsea electricity interconnector between Estonia and Finland reduced transfer capacity by half. The operator said the cause is under investigation and that the cable runs close to the damaged Finland-Estonia data cable.",
+      "analysis": {
+        "category": "infrastructure", "tags": ["physical"], "severity": 0.75, "confidence": 0.85,
+        "rationale": "Second subsea asset affected in the same corridor within 40 hours - pattern unlikely to be coincidental.",
+        "entities": {"orgs": ["Estonia-Finland interconnector", "Finland-Estonia subsea cable"]}
+      }
+    },
+    {
+      "id": "b07", "hours_ago": 30, "source_name": "Fact-check desk", "source_type": "research", "reliability": 0.8,
+      "title": "Fake evacuation SMS circulates in Narva",
+      "text": "Residents of Narva received SMS messages, falsely attributed to Estonian authorities, telling them to prepare for evacuation due to 'military escalation'. The government called the messages a hoax.",
+      "analysis": {
+        "category": "disinformation", "tags": ["physical"], "severity": 0.65, "confidence": 0.85,
+        "rationale": "Impersonation of authorities targeting a sensitive border population - designed to provoke fear and erode trust.",
+        "entities": {"orgs": ["Estonian authorities"], "narratives": ["evacuation hoax", "military escalation"]}
+      }
+    },
+    {
+      "id": "b08", "hours_ago": 12, "source_name": "Nordic news agency", "source_type": "news", "reliability": 0.85,
+      "title": "Coast guard boards MV Northern Varg; anchor damage found",
+      "text": "Finnish coast guard officers boarded the MV Northern Varg in the Gulf of Finland and found damage consistent with an anchor being dragged. The crew denied wrongdoing. NATO announced additional patrols in the Baltic Sea.",
+      "analysis": {
+        "category": "physical", "tags": ["infrastructure"], "severity": 0.7, "confidence": 0.9,
+        "rationale": "Physical evidence ties the vessel seen loitering to the cable damage - strong corroboration of deliberate sabotage.",
+        "entities": {"actors": ["MV Northern Varg"], "orgs": ["NATO", "Finnish Coast Guard", "Finland-Estonia subsea cable"]}
+      }
+    },
+
+    {
+      "id": "m01", "hours_ago": 44, "source_name": "Media monitor", "source_type": "research", "reliability": 0.6,
+      "title": "Cloned news site spreads false gas price hike story",
+      "text": "A website cloning a major Moldovan outlet published a fabricated story claiming gas prices in Chisinau will triple next month. The article was shared by the Pravda-MD network of pages.",
+      "analysis": {
+        "category": "disinformation", "tags": [], "severity": 0.5, "confidence": 0.8,
+        "rationale": "Cloned-media tactic used to spread economic panic ahead of a politically sensitive period.",
+        "entities": {"actors": ["Pravda-MD"], "narratives": ["gas price hike"]}
+      }
+    },
+    {
+      "id": "m02", "hours_ago": 36, "source_name": "Regional news wire", "source_type": "news", "reliability": 0.75,
+      "title": "Central Electoral Commission website defaced",
+      "text": "Attackers defaced the website of Moldova's Central Electoral Commission in Chisinau, replacing the homepage with a message about gas prices and 'stolen elections'. Services were restored within an hour.",
+      "analysis": {
+        "category": "cyber", "tags": ["disinformation"], "severity": 0.55, "confidence": 0.85,
+        "rationale": "Low-sophistication defacement, but its message mirrors the active disinformation narratives.",
+        "entities": {"orgs": ["Central Electoral Commission"], "narratives": ["gas price hike", "stolen elections"]}
+      }
+    },
+    {
+      "id": "m03", "hours_ago": 22, "source_name": "Platform transparency report", "source_type": "research", "reliability": 0.7,
+      "title": "Bot network amplifies 'stolen elections' narrative",
+      "text": "Around 300 inauthentic accounts amplified posts about 'stolen elections' in Moldova, many of them linked to the Pravda-MD network.",
+      "analysis": {
+        "category": "disinformation", "tags": [], "severity": 0.5, "confidence": 0.8,
+        "rationale": "Coordinated amplification by a known network, reusing the narrative pushed via the defacement.",
+        "entities": {"actors": ["Pravda-MD"], "narratives": ["stolen elections"]}
+      }
+    },
+
+    {
+      "id": "u01", "hours_ago": 150, "source_name": "International news agency", "source_type": "news", "reliability": 0.9,
+      "title": "Cyberattack disrupts mobile operator in Ukraine",
+      "text": "A cyberattack disrupted services at a major mobile operator in Ukraine, affecting millions of subscribers in Kyiv and Kharkiv. Officials attributed the attack to a state-linked intrusion set.",
+      "analysis": {
+        "category": "cyber", "tags": ["infrastructure"], "severity": 0.85, "confidence": 0.85,
+        "rationale": "Large-scale disruption of telecom infrastructure attributed to a state-linked actor.",
+        "entities": {"orgs": ["mobile operator"]}
+      }
+    },
+    {
+      "id": "u02", "hours_ago": 140, "source_name": "Energy ministry statement", "source_type": "official", "reliability": 0.85,
+      "title": "Strikes damage energy infrastructure in Kharkiv",
+      "text": "Missile strikes damaged energy infrastructure in Kharkiv, causing power outages across the city. Repair crews are working to restore supply.",
+      "analysis": {
+        "category": "physical", "tags": ["infrastructure"], "severity": 0.85, "confidence": 0.9,
+        "rationale": "Kinetic strike on energy infrastructure ten hours after a telecom cyberattack in the same city - a combined pattern, now ageing.",
+        "entities": {}
+      }
+    },
+
+    {
+      "id": "n01", "hours_ago": 22, "source_name": "Security news", "source_type": "news", "reliability": 0.8,
+      "title": "Ransomware attack disrupts hospital network in Sao Paulo",
+      "text": "A ransomware group encrypted systems at a hospital network in Sao Paulo, forcing emergency departments to divert ambulances.",
+      "analysis": {
+        "category": "cyber", "tags": ["infrastructure"], "severity": 0.7, "confidence": 0.85,
+        "rationale": "Criminal ransomware with patient-safety impact; no indicators of a wider hybrid campaign.",
+        "entities": {}
+      }
+    },
+    {
+      "id": "n02", "hours_ago": 34, "source_name": "Vendor security bulletin", "source_type": "advisory", "reliability": 0.9,
+      "title": "Critical VPN appliance flaw patched; exploitation seen in Germany",
+      "text": "A critical flaw (CVE-2026-39012) in a popular enterprise VPN appliance has been patched. Germany's cyber agency reports limited exploitation against organisations in Berlin.",
+      "analysis": {
+        "category": "cyber", "tags": [], "severity": 0.7, "confidence": 0.9,
+        "rationale": "Exploited edge-device vulnerability; important for patching but single-domain.",
+        "entities": {"technologies": ["VPN"]}
+      }
+    },
+    {
+      "id": "n03", "hours_ago": 15, "source_name": "Fact-check desk", "source_type": "research", "reliability": 0.75,
+      "title": "Fabricated quote attributed to election official spreads in New Delhi",
+      "text": "A fabricated quote attributed to an election official in New Delhi was shared widely before being debunked by fact-checkers.",
+      "analysis": {
+        "category": "disinformation", "tags": [], "severity": 0.4, "confidence": 0.85,
+        "rationale": "Isolated false quote, debunked quickly; limited reach and no cross-domain activity.",
+        "entities": {}
+      }
+    },
+    {
+      "id": "n04", "hours_ago": 26, "source_name": "Disaster bulletin", "source_type": "official", "reliability": 0.9,
+      "title": "Storm causes power outages in Tokyo suburbs",
+      "text": "A strong storm brought down power lines, causing outages for 40,000 households in the Tokyo suburbs. Crews expect full restoration by evening.",
+      "analysis": {
+        "category": "infrastructure", "tags": [], "severity": 0.2, "confidence": 0.85,
+        "rationale": "Weather-related outage with no hostile actor - infrastructure impact but low threat priority.",
+        "entities": {}
+      }
+    },
+    {
+      "id": "n05", "hours_ago": 46, "source_name": "Social media", "source_type": "social", "reliability": 0.3,
+      "title": "False claim of fuel shortages spreads in Belgrade",
+      "text": "Posts falsely claiming petrol stations in Belgrade will run dry this weekend circulated on social media; distributors denied any supply problem.",
+      "analysis": {
+        "category": "disinformation", "tags": [], "severity": 0.35, "confidence": 0.75,
+        "rationale": "Low-reach rumour without amplification network or linked activity.",
+        "entities": {}
+      }
+    },
+    {
+      "id": "n06", "hours_ago": 28, "source_name": "Media monitor", "source_type": "research", "reliability": 0.7,
+      "title": "Cloned French news sites push anti-aid stories",
+      "text": "Researchers identified cloned versions of two French news sites in Paris publishing fabricated articles opposing aid to Ukraine.",
+      "analysis": {
+        "category": "disinformation", "tags": [], "severity": 0.5, "confidence": 0.85,
+        "rationale": "Cloned-media influence operation; single domain, no linked cyber or physical activity observed.",
+        "entities": {}
+      }
+    },
+    {
+      "id": "n07", "hours_ago": 16, "source_name": "Port authority statement", "source_type": "official", "reliability": 0.85,
+      "title": "Ransomware disrupts container terminal systems in Rotterdam",
+      "text": "A ransomware attack disrupted booking systems at a container terminal in Rotterdam, delaying cargo handling for several hours.",
+      "analysis": {
+        "category": "cyber", "tags": ["infrastructure"], "severity": 0.65, "confidence": 0.85,
+        "rationale": "Operational impact on logistics; appears financially motivated.",
+        "entities": {}
+      }
+    },
+    {
+      "id": "n08", "hours_ago": 9, "source_name": "Leak-site monitor", "source_type": "leak", "reliability": 0.45,
+      "title": "Retailer customer database posted on leak site",
+      "text": "A database allegedly containing customer records of a London retailer was posted on a leak site; authenticity is unverified.",
+      "analysis": {
+        "category": "cyber", "tags": [], "severity": 0.45, "confidence": 0.6,
+        "rationale": "Unverified data leak claim from a low-reliability venue.",
+        "entities": {}
+      }
+    },
+    {
+      "id": "n09", "hours_ago": 40, "source_name": "Security news", "source_type": "news", "reliability": 0.8,
+      "title": "Phishing campaign impersonates tax agency in Washington",
+      "text": "A phishing campaign impersonating the tax agency is targeting residents in Washington with fake refund notices.",
+      "analysis": {
+        "category": "cyber", "tags": [], "severity": 0.4, "confidence": 0.85,
+        "rationale": "Commodity fraud phishing; low strategic significance.",
+        "entities": {}
+      }
+    }
+  ]
+}
