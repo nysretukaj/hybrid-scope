@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { CircleMarker, MapContainer, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
 import { cat, level } from '../lib/format'
+import { useI18n } from '../lib/i18n'
 
 function FlyTo({ target, id }) {
   const map = useMap()
@@ -12,6 +13,7 @@ function FlyTo({ target, id }) {
 }
 
 export default function ThreatMap({ alerts, selectedId, detail, onSelect }) {
+  const { t } = useI18n()
   const located = detail?.signals?.filter((s) => s.lat != null) || []
   return (
     <div className="panel relative overflow-hidden">
@@ -59,9 +61,9 @@ export default function ThreatMap({ alerts, selectedId, detail, onSelect }) {
         <FlyTo target={detail?.centroid} id={detail?.id} />
       </MapContainer>
       <div className="pointer-events-none absolute bottom-2 left-2 z-[500] flex gap-3 rounded-md bg-slate-950/80 px-2 py-1 text-[10px] text-slate-400 ring-1 ring-slate-800">
-        <span>● solid = hybrid</span>
-        <span>◌ dashed = single-domain</span>
-        <span>size = risk score</span>
+        <span>{t('m.hybrid')}</span>
+        <span>{t('m.single')}</span>
+        <span>{t('m.size')}</span>
       </div>
     </div>
   )

@@ -1,27 +1,34 @@
 import { useState } from 'react'
 import { api } from '../lib/api'
 import { CATEGORY_ORDER, cat, pct } from '../lib/format'
+import { useI18n } from '../lib/i18n'
 import { AnalyzerBadge, CategoryBadge, Chip, SectionTitle } from './ui'
 
 const SAMPLES = [
   {
-    label: 'Cyber + infrastructure',
+    label: 'EN · Cyber + infra',
     title: 'Hackers hit water utility in Riga',
     text: 'A hacktivist group claimed it breached the SCADA system of a water treatment plant in Riga, exploiting CVE-2025-1234 in an exposed HMI. The utility confirmed a brief supply disruption.',
   },
   {
-    label: 'Disinformation',
+    label: 'SQ · Dezinformim',
     title: '',
-    text: 'A deepfake video of the prime minister announcing mobilisation is being amplified by a bot network on TikTok and Telegram in Skopje. Fact-checkers have debunked it. #MobilisationNow',
+    text: 'Një video deepfake e kryeministrit që njofton mobilizim po përhapet nga llogari të rreme në TikTok dhe Telegram në Prishtinë. Verifikuesit e fakteve thonë se janë lajme të rreme. #MobilizimiTani',
   },
   {
-    label: 'Physical',
+    label: 'SQ · Infrastrukturë',
     title: '',
-    text: 'Drones were spotted over a military airbase near Warsaw for the second night; police are investigating possible sabotage of a nearby railway line.',
+    text: 'Sulm kibernetik ndaj operatorit të rrjetit elektrik shkakton ndërprerje të rrymës në Mitrovicë dhe Prizren; hakerët pretendojnë qasje në sistemin SCADA.',
+  },
+  {
+    label: 'DE · Physisch',
+    title: '',
+    text: 'Drohnen über einem Kraftwerk bei Wien gesichtet; die Polizei ermittelt wegen möglicher Sabotage an einer nahegelegenen Bahnstrecke.',
   },
 ]
 
 export default function AnalyzePanel() {
+  const { t } = useI18n()
   const [title, setTitle] = useState(SAMPLES[0].title)
   const [text, setText] = useState(SAMPLES[0].text)
   const [result, setResult] = useState(null)
@@ -38,7 +45,7 @@ export default function AnalyzePanel() {
   return (
     <div className="grid gap-4 p-4 lg:grid-cols-2">
       <div className="panel p-4">
-        <SectionTitle>Paste any open-source text</SectionTitle>
+        <SectionTitle>{t('a.paste')}</SectionTitle>
         <div className="mb-3 flex flex-wrap gap-1.5">
           {SAMPLES.map((s) => (
             <button key={s.label} onClick={() => { setTitle(s.title); setText(s.text); setResult(null) }} className="rounded-md px-2 py-1 text-[11px] text-slate-400 ring-1 ring-slate-700 hover:text-slate-200">
@@ -46,26 +53,26 @@ export default function AnalyzePanel() {
             </button>
           ))}
         </div>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title (optional)" className="mb-2 w-full rounded-lg bg-slate-950/70 px-3 py-2 text-sm ring-1 ring-slate-700 outline-none focus:ring-cyan-500/60" />
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('a.titlePh')} className="mb-2 w-full rounded-lg bg-slate-950/70 px-3 py-2 text-sm ring-1 ring-slate-700 outline-none focus:ring-cyan-500/60" />
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={9} className="w-full rounded-lg bg-slate-950/70 px-3 py-2 text-sm leading-relaxed ring-1 ring-slate-700 outline-none focus:ring-cyan-500/60" />
         <button onClick={run} disabled={busy || text.trim().length < 3} className="mt-3 rounded-lg bg-cyan-500/20 px-4 py-2 text-sm font-medium text-cyan-200 ring-1 ring-cyan-500/40 hover:bg-cyan-500/30 disabled:opacity-50">
-          {busy ? 'Analyzing…' : 'Extract & classify'}
+          {busy ? t('a.running') : t('a.run')}
         </button>
         {error && <div className="mt-2 text-sm text-red-400">{error}</div>}
       </div>
 
       <div className="panel p-4">
-        <SectionTitle>AI analysis output</SectionTitle>
-        {!result && <div className="py-10 text-center text-sm text-slate-500">Run the analyzer to see entities, classification and severity.</div>}
+        <SectionTitle>{t('a.output')}</SectionTitle>
+        {!result && <div className="py-10 text-center text-sm text-slate-500">{t('a.empty')}</div>}
         {result && (
           <div className="space-y-4 text-sm">
             <div className="flex flex-wrap items-center gap-3">
               <CategoryBadge category={result.category} />
-              {result.tags.map((t) => <CategoryBadge key={t} category={t} small />)}
+              {result.tags.map((tg) => <CategoryBadge key={tg} category={tg} small />)}
               <AnalyzerBadge value={result.analyzer} />
             </div>
             <div className="grid grid-cols-3 gap-3">
-              {[['Severity', result.severity.toFixed(2)], ['Confidence', pct(result.confidence)], ['Region', result.location?.zone || '—']].map(([k, v]) => (
+              {[[t('a.severity'), result.severity.toFixed(2)], [t('a.confidence'), pct(result.confidence)], [t('a.region'), result.location?.zone || '—']].map(([k, v]) => (
                 <div key={k} className="rounded-lg bg-slate-950/60 p-3 ring-1 ring-slate-800">
                   <div className="text-[10px] uppercase tracking-widest text-slate-500">{k}</div>
                   <div className="mt-1 font-mono text-lg text-slate-100">{v}</div>
@@ -77,7 +84,7 @@ export default function AnalyzePanel() {
               <div className="space-y-1.5">
                 {CATEGORY_ORDER.map((c) => (
                   <div key={c} className="flex items-center gap-2 text-xs">
-                    <span className="w-28 text-slate-400">{cat(c).label.split(' ')[0]}</span>
+                    <span className="w-28 text-slate-400">{t(`cat.${c}`).split(' ')[0]}</span>
                     <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-800">
                       <div className="h-full rounded-full" style={{ width: `${((result.keyword_scores[c] || 0) / maxKw) * 100}%`, background: cat(c).color }} />
                     </div>

@@ -30,6 +30,20 @@ body {
 
 .scroll-thin { scrollbar-width: thin; scrollbar-color: #334155 transparent; }
 
+@keyframes fade-in { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: none } }
+
+body.brief-open { overflow: hidden; }
+
+@media print {
+  @page { margin: 14mm; }
+  html, body { background: #fff !important; }
+  body.brief-open { overflow: visible; }
+  #root, .no-print { display: none !important; }
+  .brief-overlay { position: static !important; overflow: visible !important; background: none !important; backdrop-filter: none !important; }
+  .print-area { margin: 0 !important; max-width: none !important; padding: 0 !important; box-shadow: none !important; }
+  .print-area a { color: inherit !important; text-decoration: none !important; }
+}
+
 @keyframes pulse-ring { 0% { transform: scale(0.8); opacity: 0.8 } 100% { transform: scale(2.2); opacity: 0 } }
 .live-dot::after {
   content: ""; position: absolute; inset: 0; border-radius: 9999px; background: currentColor;

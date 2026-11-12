@@ -15,6 +15,7 @@ from . import scoring
 from .analyzer.local import CATEGORY_LABELS
 from .config import CLUSTER_GAP_HOURS, CROSS_CATEGORY_LINK_HOURS
 from .normalize import iso, parse_iso
+from .ttp import map_ttps
 
 CATEGORY_ORDER = ["disinformation", "cyber", "infrastructure", "physical"]
 LINK_TYPES = {"actors": "actor", "orgs": "organisation", "technologies": "technology", "cves": "CVE", "narratives": "narrative"}
@@ -176,8 +177,52 @@ def make_alert(zone: str, sigs: list[dict], now: datetime) -> dict:
         "breakdown": breakdown,
         "sequence": sequence,
         "shared_entities": shared,
+        "ttps": map_ttps(sigs),
         "links": links,
         "signals": [_public(s) for s in sigs],
+    }
+
+
+def replay(alert: dict) -> dict:
+    """Re-evaluate the alert as each signal arrived, as if the platform had been running live.
+
+    Answers the key question for an early-warning system: when would we have raised the flag,
+    and how long before the first real-world impact?
+    """
+    sigs = sorted(({**s, "_ts": parse_iso(s["timestamp"])} for s in alert["signals"]), key=lambda s: s["_ts"])
+    frames = []
+    for i, s in enumerate(sigs):
+        state = make_alert(alert["zone"], [dict(x) for x in sigs[: i + 1]], s["_ts"])
+        frames.append({
+            "t": iso(s["_ts"]), "signal_id": s["id"], "title": s["title"], "category": s["category"],
+            "source": s["source_name"], "score": state["score"], "level": state["level"],
+            "is_hybrid": state["is_hybrid"], "confidence": state["confidence"],
+            "categories": state["categories"], "links": len(state["links"]),
+        })
+
+    def first(pred):
+        return next((f for f in frames if pred(f)), None)
+
+    impact_sig = next((s for s in sigs if s["category"] == "infrastructure" and s["severity"] >= 0.7), None)
+    hybrid = first(lambda f: f["is_hybrid"])
+    high = first(lambda f: f["score"] >= 55)
+    critical = first(lambda f: f["score"] >= 75)
+
+    def lead(frame):
+        if not frame or not impact_sig:
+            return None
+        return round((impact_sig["_ts"] - parse_iso(frame["t"])).total_seconds() / 3600, 1)
+
+    return {
+        "alert_id": alert["id"],
+        "zone": alert["zone"],
+        "frames": frames,
+        "milestones": {
+            "first_hybrid": hybrid and {"t": hybrid["t"], "signal_id": hybrid["signal_id"], "lead_hours": lead(hybrid)},
+            "first_high": high and {"t": high["t"], "signal_id": high["signal_id"], "lead_hours": lead(high)},
+            "first_critical": critical and {"t": critical["t"], "signal_id": critical["signal_id"], "lead_hours": lead(critical)},
+            "impact": impact_sig and {"t": iso(impact_sig["_ts"]), "signal_id": impact_sig["id"], "title": impact_sig["title"]},
+        },
     }
 
 

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { CATEGORY_ORDER, cat, fmtTime } from '../lib/format'
+import { useI18n } from '../lib/i18n'
 
 const W = 960
 const LANE_H = 46
@@ -7,8 +8,11 @@ const TOP = 14
 const LEFT = 128
 const RIGHT = 24
 
-export default function CorrelationTimeline({ alert, activeId, onSelectSignal }) {
+export default function CorrelationTimeline({ alert, activeId, onSelectSignal, cutoff }) {
+  const { t } = useI18n()
   const [hover, setHover] = useState(null)
+  const cutoffMs = cutoff ? new Date(cutoff).getTime() : null
+  const visible = (id) => cutoffMs == null || new Date(pos[id]?.s.timestamp).getTime() <= cutoffMs
   const lanes = CATEGORY_ORDER
   const H = TOP + lanes.length * LANE_H + 34
 
@@ -52,7 +56,7 @@ export default function CorrelationTimeline({ alert, activeId, onSelectSignal })
           <g key={c}>
             <rect x={LEFT - 6} y={TOP + i * LANE_H + 3} width={W - LEFT - RIGHT + 12} height={LANE_H - 6} rx="6" fill={cat(c).color} opacity={alert.categories.includes(c) ? 0.06 : 0.02} />
             <text x={LEFT - 14} y={TOP + i * LANE_H + LANE_H / 2 + 4} textAnchor="end" fontSize="11" fill={alert.categories.includes(c) ? cat(c).color : '#475569'} fontFamily="Inter" fontWeight="600">
-              {cat(c).label.split(' ')[0]}
+              {t(`cat.${c}`).split(' ')[0]}
             </text>
           </g>
         ))}
@@ -66,7 +70,7 @@ export default function CorrelationTimeline({ alert, activeId, onSelectSignal })
         {alert.links.map((l) => {
           const a = pos[l.source]
           const b = pos[l.target]
-          if (!a || !b) return null
+          if (!a || !b || !visible(l.source) || !visible(l.target)) return null
           const on = focus && (l.source === focus || l.target === focus)
           const cross = a.s.category !== b.s.category
           const midX = (a.x + b.x) / 2
@@ -86,7 +90,7 @@ export default function CorrelationTimeline({ alert, activeId, onSelectSignal })
           )
         })}
 
-        {Object.values(pos).map(({ x, y, s }) => {
+        {Object.values(pos).filter(({ s }) => visible(s.id)).map(({ x, y, s }) => {
           const r = 5 + s.severity * 7
           const dim = focus && focus !== s.id && !focusLinks.has(s.id)
           return (
@@ -113,10 +117,10 @@ export default function CorrelationTimeline({ alert, activeId, onSelectSignal })
         </div>
       )}
       <div className="mt-1 flex flex-wrap gap-4 text-[10px] text-slate-500">
-        <span><span className="text-fuchsia-300">━</span> shared entity across domains</span>
-        <span><span className="text-slate-400">━</span> shared entity, same domain</span>
-        <span><span className="text-slate-500">┄</span> cross-domain within 24h</span>
-        <span>node size = severity · hover a node to trace its links</span>
+        <span><span className="text-fuchsia-300">━</span> {t('tl.cross')}</span>
+        <span><span className="text-slate-400">━</span> {t('tl.same')}</span>
+        <span><span className="text-slate-500">┄</span> {t('tl.temporal')}</span>
+        <span>{t('tl.hint')}</span>
       </div>
     </div>
   )

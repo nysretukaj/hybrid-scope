@@ -29,7 +29,7 @@ KEYWORDS: dict[str, dict[str, int]] = {
     "disinformation": {
         "disinformation": 3, "misinformation": 2, "propaganda": 3, "fake news": 3, "deepfake": 3,
         "bot network": 3, "bots": 2, "inauthentic": 3, "influence operation": 3, "information operation": 3,
-        "narrative": 2, "hoax": 3, "false claim": 3, "falsely": 2, "fabricated": 3, "cloned": 2, "cloning": 2,
+        "hoax": 3, "false claim": 3, "falsely": 2, "fabricated": 3, "cloned": 2, "cloning": 2,
         "impersonat": 2, "troll": 2, "conspiracy": 2, "amplif": 2, "rumour": 2, "rumor": 2,
         "manipulated video": 3, "fact-check": 2, "debunk": 2, "smear": 2, "doppelganger": 3,
     },
@@ -49,15 +49,64 @@ KEYWORDS: dict[str, dict[str, int]] = {
     },
 }
 
+# Albanian (sq) and German (de) indicators. Leading-boundary prefix match, so stems cover inflections
+# (e.g. "dezinformat" -> dezinformata, dezinformatave; "drohne" -> Drohnen).
+KEYWORDS_I18N: dict[str, dict[str, int]] = {
+    "cyber": {
+        # sq
+        "sulm kibernetik": 3, "sulmi kibernetik": 3, "sulme kibernetike": 3, "kibernetik": 2, "haker": 2,
+        "hakuar": 2, "rrjedhje të dhënash": 3, "cenueshmëri": 2, "softuer keqdashës": 3,
+        # de
+        "cyberangriff": 3, "cyberattacke": 3, "hackerangriff": 3, "schadsoftware": 3, "sicherheitslücke": 3,
+        "datenleck": 3, "erpressungssoftware": 3, "angreifer": 2, "ddos-angriff": 3, "gehackt": 2,
+        "schwachstelle": 2, "lösegeld": 2,
+    },
+    "disinformation": {
+        # sq
+        "dezinformat": 3, "dezinformim": 3, "lajm i rremë": 3, "lajme të rreme": 3, "lajme false": 3,
+        "propagand": 3, "llogari të rreme": 3, "pretendim i rremë": 3, "pretendime të rreme": 3, "manipulim": 2,
+        "narrativ": 2,
+        # de
+        "desinformation": 3, "falschnachricht": 3, "falschmeldung": 3, "gefälscht": 2, "manipuliert": 2,
+        "bot-netzwerk": 3, "einflussoperation": 3, "verschwörung": 2,
+    },
+    "infrastructure": {
+        # sq
+        "ndërprerje": 2, "ndërprerja e rrymës": 3, "pa rrymë": 3, "rrjeti elektrik": 3, "energji elektrike": 2,
+        "energjisë elektrike": 2, "nënstacion": 3, "termocentral": 3, "infrastrukturë kritike": 3,
+        "infrastruktura kritike": 3, "furnizim me ujë": 3, "furnizimi me ujë": 3, "gazsjellës": 3,
+        # de
+        "stromausfall": 3, "kritische infrastruktur": 3, "stromnetz": 3, "umspannwerk": 3, "kraftwerk": 3,
+        "unterseekabel": 3, "wasserversorgung": 3, "netzbetreiber": 2,
+    },
+    "physical": {
+        # sq
+        "dron": 3, "sabotim": 3, "trazira": 3, "shpërthim": 3, "ushtri": 2, "ushtarak": 2, "raket": 3,
+        "evakuim": 2, "përleshje": 3, "sulm i armatosur": 3,
+        # de
+        "drohne": 3, "anschlag": 3, "militär": 2, "rakete": 3, "bundeswehr": 2, "spionage": 2,
+        "evakuierung": 2, "störsender": 3, "gps-störung": 3, "demonstration": 1,
+    },
+}
+for _cat, _kws in KEYWORDS_I18N.items():
+    KEYWORDS[_cat].update(_kws)
+
 SEVERITY_BOOSTERS = {
     "actively exploited": 0.2, "zero-day": 0.15, "killed": 0.25, "casualties": 0.2, "injured": 0.12,
     "nationwide": 0.1, "widespread": 0.08, "millions": 0.1, "state-sponsored": 0.12, "state-linked": 0.12,
     "critical": 0.08, "emergency": 0.08, "ransomware": 0.08, "wiper": 0.15, "sabotage": 0.12,
     "hospital": 0.1, "election": 0.08, "confirmed": 0.05,
+    # sq
+    "të vdekur": 0.25, "vrarë": 0.25, "të plagosur": 0.12, "spital": 0.1, "zgjedhje": 0.08, "kritike": 0.08,
+    # de
+    "getötet": 0.25, "tote": 0.2, "verletzt": 0.12, "krankenhaus": 0.1, "wahl": 0.08, "kritisch": 0.08,
+    "aktiv ausgenutzt": 0.2,
 }
 SEVERITY_DAMPENERS = {
     "storm": -0.2, "weather": -0.2, "earthquake": -0.15, "planned maintenance": -0.2, "drill": -0.15,
     "exercise": -0.1, "no data was compromised": -0.05,
+    "stuhi": -0.2, "mirëmbajtje": -0.2, "tërmet": -0.15,
+    "sturm": -0.2, "unwetter": -0.2, "wartung": -0.2, "erdbeben": -0.15, "übung": -0.1,
 }
 
 KNOWN_ACTORS = [
