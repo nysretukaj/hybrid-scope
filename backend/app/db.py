@@ -30,6 +30,17 @@ CREATE TABLE IF NOT EXISTS signals (
     synthetic INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_signals_ts ON signals(timestamp);
+CREATE TABLE IF NOT EXISTS alert_feedback (
+    alert_id TEXT PRIMARY KEY,
+    verdict TEXT NOT NULL,          -- confirmed | false_positive
+    note TEXT,
+    sources TEXT NOT NULL,          -- JSON list of source names in the alert at review time
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS notifications (
+    alert_id TEXT PRIMARY KEY,
+    sent_at TEXT NOT NULL
+);
 """
 
 COLUMNS = [
@@ -105,3 +116,49 @@ def count_signals() -> int:
 def delete_synthetic() -> int:
     with get_conn() as conn:
         return conn.execute("DELETE FROM signals WHERE synthetic = 1").rowcount
+
+
+# --- Analyst feedback -------------------------------------------------------
+def set_feedback(alert_id: str, verdict: str, note: str | None, sources: list[str], created_at: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO alert_feedback (alert_id, verdict, note, sources, created_at) VALUES (?, ?, ?, ?, ?)",
+            (alert_id, verdict, note, json.dumps(sources), created_at),
+        )
+
+
+def delete_feedback(alert_id: str) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM alert_feedback WHERE alert_id = ?", (alert_id,))
+
+
+def clear_feedback() -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM alert_feedback")
+        conn.execute("DELETE FROM notifications")
+
+
+def get_feedback() -> dict[str, dict]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM alert_feedback").fetchall()
+    return {r["alert_id"]: {**dict(r), "sources": json.loads(r["sources"])} for r in rows}
+
+
+def source_feedback_stats() -> dict[str, dict]:
+    stats: dict[str, dict] = {}
+    for fb in get_feedback().values():
+        key = "confirmed" if fb["verdict"] == "confirmed" else "rejected"
+        for src in fb["sources"]:
+            stats.setdefault(src, {"confirmed": 0, "rejected": 0})[key] += 1
+    return stats
+
+
+# --- Notifications ----------------------------------------------------------
+def was_notified(alert_id: str) -> bool:
+    with get_conn() as conn:
+        return conn.execute("SELECT 1 FROM notifications WHERE alert_id = ?", (alert_id,)).fetchone() is not None
+
+
+def mark_notified(alert_id: str, sent_at: str) -> None:
+    with get_conn() as conn:
+        conn.execute("INSERT OR REPLACE INTO notifications (alert_id, sent_at) VALUES (?, ?)", (alert_id, sent_at))

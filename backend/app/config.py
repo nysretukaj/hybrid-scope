@@ -32,6 +32,16 @@ RSS_FEEDS = [
     {"name": "Krebs on Security", "url": "https://krebsonsecurity.com/feed/", "type": "news", "reliability": 0.85},
     {"name": "EUvsDisinfo", "url": "https://euvsdisinfo.eu/feed/", "type": "research", "reliability": 0.85},
     {"name": "Balkan Insight", "url": "https://balkaninsight.com/feed/", "type": "news", "reliability": 0.8},
+    # Kosovo / Albanian-language sources
+    {"name": "Prishtina Insight", "url": "https://prishtinainsight.com/feed/", "type": "news", "reliability": 0.8},
+    {"name": "Koha", "url": "https://www.koha.net/rss", "type": "news (sq)", "reliability": 0.75},
+    {"name": "Kallxo", "url": "https://kallxo.com/feed/", "type": "news (sq)", "reliability": 0.75},
+    {"name": "Telegrafi", "url": "https://telegrafi.com/feed/", "type": "news (sq)", "reliability": 0.65},
+    {"name": "DW Shqip", "url": "https://rss.dw.com/xml/rss-alb-all", "type": "news (sq)", "reliability": 0.85},
+    # German-language sources
+    {"name": "heise Security", "url": "https://www.heise.de/security/rss/news-atom.xml", "type": "news (de)", "reliability": 0.85},
+    {"name": "tagesschau", "url": "https://www.tagesschau.de/xml/rss2/", "type": "news (de)", "reliability": 0.85},
+    {"name": "DW Deutsch", "url": "https://rss.dw.com/xml/rss-de-all", "type": "news (de)", "reliability": 0.85},
 ]
 
 GDELT_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
@@ -56,6 +66,14 @@ LLM_BASE_URL = os.getenv("LLM_BASE_URL", "").rstrip("/")
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
 LLM_MODEL = os.getenv("LLM_MODEL", "")
 LLM_FOR_LIVE = os.getenv("LLM_FOR_LIVE", "0") == "1"  # also run the LLM on every live item (rate limits!)
+
+
+# --- Notifications ------------------------------------------------------------
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+ALERT_WEBHOOK_URL = os.getenv("ALERT_WEBHOOK_URL", "")
+NOTIFY_MIN_LEVEL = os.getenv("NOTIFY_MIN_LEVEL", "CRITICAL")
+PUBLIC_URL = os.getenv("PUBLIC_URL", "").rstrip("/")
 
 
 def llm_enabled() -> bool:

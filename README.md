@@ -61,6 +61,19 @@ Locations and CVEs always come from deterministic extraction, which is more reli
 Confidence is a noisy-OR over independent sources: each extra corroborating source raises it.
 Levels: CRITICAL ≥ 75 · HIGH ≥ 55 · MEDIUM ≥ 35 · LOW.
 
+## What makes it stand out
+
+| Feature | Where | Why it matters |
+|---|---|---|
+| **Early-warning replay** | ▶ Replay on any alert | Re-runs the scoring as each signal arrived. In the Kosovo scenario the hybrid pattern is flagged **29h before the first outage** (HIGH 21h before). |
+| **Intelligence brief + PDF** | ▤ Intel brief | BLUF, key judgments in ICD 203 estimative language, TTPs, indicators to watch, recommended actions, sourced evidence. Export with the browser's *Save as PDF*. |
+| **MITRE ATT&CK · ATT&CK for ICS · DISARM** | alert detail, brief | Heuristic technique mapping per domain (`backend/app/ttp.py`), linked to attack.mitre.org. |
+| **Analyst feedback loop** | ✓ Confirm / ✗ False positive | Verdicts update every source's reliability: `(prior·4 + confirmed) / (4 + confirmed + rejected)`. Scores change immediately. |
+| **Entity network** | Network tab | Force-directed graph of alerts ↔ shared actors, orgs, tech, CVEs and narratives; highlights entities bridging campaigns. |
+| **Albanian · English · German** | EN/SQ/DE toggle | Full UI translation; the analyzer understands sq/de keywords and place names (Prishtinë, Mitrovicës, Deutschland, Wien…). |
+| **Local sources** | live ingest | Koha, Kallxo, Telegrafi, Prishtina Insight, DW Shqip, heise Security, tagesschau, DW Deutsch. |
+| **Push notifications** | optional | Telegram bot and/or Slack/Discord/Teams webhook for new live alerts ≥ `NOTIFY_MIN_LEVEL`. |
+
 ## Data honesty
 The **exercise scenario** ("GRIDLOCK") uses real place names with **fictional** events, outlets, actors (GreyMist, Voice of the Valley, Northern Hydra, Pravda-MD) and CVE numbers.
 It is labelled `EXERCISE SCENARIO` / `synthetic exercise source` in the UI. Live items always link to their original article.
@@ -74,11 +87,20 @@ $env:LLM_FOR_LIVE = "1"   # also analyse every live item with the LLM (watch rat
 ```
 Other settings: `LIVE_INGEST_INTERVAL_MIN` (auto-ingest), `LOOKBACK_HOURS`, `CLUSTER_GAP_HOURS`, `RECENCY_HALF_LIFE_HOURS`.
 
-## Demo script (≈3 min)
-1. **Signal Stream**: "This is the firehose: hundreds of items from 80+ sources."
-2. **Threat Board**: the same data becomes about 18 prioritized alerts. Open **Kosovo (CRITICAL 89)**.
-3. Follow the **sequence**: Disinformation → Cyber (+12h) → Infrastructure (+41h) → Physical (+43h). No single-domain tool connects these signals.
-4. **Correlation timeline**: hover a GreyMist node to see the phishing → SCADA exploit → access sale → CERT confirmation chain.
-5. **Why this score?**: every point is explained, and every signal links back to its evidence.
-6. Click **Ingest live sources**: real articles arrive and are classified and correlated live (filter: *Live*).
-7. **Analyze Text**: paste any article and get entities, domain, severity and region instantly.
+## Optional: push notifications
+```powershell
+$env:TELEGRAM_BOT_TOKEN = "<from @BotFather>"; $env:TELEGRAM_CHAT_ID = "<chat id>"
+$env:ALERT_WEBHOOK_URL = "<Slack/Discord/Teams incoming webhook>"   # optional, either or both
+$env:NOTIFY_MIN_LEVEL = "CRITICAL"; $env:PUBLIC_URL = "http://localhost:8000"
+```
+New live alerts at or above the level are pushed once after each ingest. A **Send alert** button appears on every alert.
+
+## Demo script (≈4 min)
+1. **Signal Stream**: "This is the firehose: hundreds of items from 15 sources in three languages."
+2. **Threat Board**: the same data becomes about 20 prioritized alerts. Open **Kosovo (CRITICAL 89)**.
+3. Press **▶ Replay**: watch the score climb signal by signal. The hybrid flag appears at the phishing wave, **29 hours before the first outage**. *This is the pitch.*
+4. **Correlation timeline** + **MITRE ATT&CK / DISARM** chips: phishing → SCADA exploit → access sale → CERT confirmation, alongside bot amplification and a deepfake.
+5. **▤ Intel brief** → *Export PDF*: a ready-to-send product for decision makers.
+6. **✓ Confirm** the alert: source reliabilities update live (the system learns from analysts).
+7. **Network** tab: entities such as Telegram bridge the Kosovo and Baltic campaigns.
+8. Switch **SQ / DE**, click **Ingest live sources** (Koha, Kallxo, heise, tagesschau…) and paste an Albanian article into **Analyze Text**.

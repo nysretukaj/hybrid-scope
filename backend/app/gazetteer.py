@@ -81,6 +81,14 @@ PLACES = [
     (("Turkey", "Türkiye"), "Turkey", "Turkey", 38.96, 35.24, 1),
     (("Istanbul",), "Turkey", "Turkey", 41.0082, 28.9784, 2),
     (("Ankara",), "Turkey", "Turkey", 39.9334, 32.8597, 2),
+    (("Austria",), "Austria", "Austria", 47.5, 14.55, 1),
+    (("Vienna",), "Austria", "Austria", 48.2082, 16.3738, 2),
+    (("Switzerland",), "Switzerland", "Switzerland", 46.8, 8.23, 1),
+    (("Zurich", "Zürich"), "Switzerland", "Switzerland", 47.3769, 8.5417, 2),
+    (("Bern",), "Switzerland", "Switzerland", 46.948, 7.4474, 2),
+    (("Munich", "München"), "Germany", "Germany", 48.1351, 11.582, 2),
+    (("Hamburg",), "Germany", "Germany", 53.5511, 9.9937, 2),
+    (("Frankfurt",), "Germany", "Germany", 50.1109, 8.6821, 2),
     # Rest of world
     (("Israel",), "Israel", "Israel", 31.05, 34.85, 1),
     (("Tel Aviv",), "Israel", "Israel", 32.0853, 34.7818, 2),
@@ -109,10 +117,69 @@ PLACES = [
     (("Sydney",), "Australia", "Australia", -33.8688, 151.2093, 2),
 ]
 
+# Albanian (sq) and German (de) names, including common Albanian inflected forms -> canonical name.
+ALIASES = {
+    "Kosovo": ["Kosova", "Kosovë", "Kosovës", "Kosovën"],
+    "Pristina": ["Prishtinës", "Prishtinën", "Prishtina"],
+    "Obiliq": ["Obiliqit"],
+    "Mitrovica": ["Mitrovicë", "Mitrovicës"],
+    "Prizren": ["Prizrenit", "Prizrenin"],
+    "Peja": ["Pejë", "Pejës"],
+    "Gjilan": ["Gjilanit"],
+    "Ferizaj": ["Ferizajt"],
+    "Serbia": ["Serbi", "Serbia", "Serbisë", "Serbinë", "Serbien"],
+    "Belgrade": ["Beograd", "Beogradit", "Belgrad"],
+    "North Macedonia": ["Maqedoni e Veriut", "Maqedonia e Veriut", "Maqedonisë së Veriut", "Nordmazedonien"],
+    "Skopje": ["Shkup", "Shkupit"],
+    "Albania": ["Shqipëri", "Shqipëria", "Shqipërisë", "Shqipërinë", "Albanien"],
+    "Tirana": ["Tiranë", "Tiranës"],
+    "Montenegro": ["Mal i Zi", "Malit të Zi", "Mali i Zi"],
+    "Bosnia": ["Bosnje", "Bosnjë", "Bosnien"],
+    "Croatia": ["Kroaci", "Kroacia", "Kroatien"],
+    "Estonia": ["Estland", "Estoni", "Estonia"],
+    "Finland": ["Finnland", "Finlandë", "Finlanda"],
+    "Gulf of Finland": ["Finnischer Meerbusen", "Gjiri i Finlandës"],
+    "Baltic Sea": ["Ostsee", "Deti Baltik"],
+    "Latvia": ["Lettland", "Letoni"],
+    "Lithuania": ["Litauen", "Lituani"],
+    "Moldova": ["Moldau", "Moldavi", "Moldavia"],
+    "Chisinau": ["Kischinau", "Kishinau"],
+    "Ukraine": ["Ukrainë", "Ukraina", "Ukrainës"],
+    "Kyiv": ["Kiew", "Kievit"],
+    "Russia": ["Rusi", "Rusia", "Rusisë", "Russland"],
+    "Moscow": ["Moskau", "Moskë", "Moska", "Moskës"],
+    "Poland": ["Polen", "Poloni", "Polonia"],
+    "Warsaw": ["Warschau", "Varshavë", "Varshava"],
+    "Germany": ["Deutschland", "Gjermani", "Gjermania", "Gjermanisë"],
+    "France": ["Frankreich", "Francë", "Franca", "Francës"],
+    "United Kingdom": ["Großbritannien", "Britani e Madhe", "Britania e Madhe"],
+    "London": ["Londër", "Londra", "Londrës"],
+    "Netherlands": ["Niederlande", "Holandë", "Holanda"],
+    "Belgium": ["Belgien", "Belgjikë"],
+    "Brussels": ["Brüssel", "Bruksel", "Brukseli"],
+    "Italy": ["Italien", "Itali", "Italia", "Italisë"],
+    "Rome": ["Romë"],  # not "Roma": collides with the Roma people in English news
+    "Spain": ["Spanien", "Spanjë", "Spanja"],
+    "Greece": ["Griechenland", "Greqi", "Greqia", "Greqisë"],
+    "Athens": ["Athen", "Athinë", "Athina"],
+    "Turkey": ["Türkei", "Turqi", "Turqia", "Turqisë"],
+    "Romania": ["Rumänien", "Rumani", "Rumania"],
+    "Bulgaria": ["Bulgarien", "Bullgari", "Bullgaria"],
+    "Austria": ["Österreich", "Austri", "Austria", "Austrisë"],
+    "Vienna": ["Wien", "Vjenë", "Vjena"],
+    "Switzerland": ["Schweiz", "Zvicër", "Zvicra", "Zvicrës"],
+    "China": ["Kina", "Kinë", "Kinës"],
+    "Japan": ["Japoni", "Japonia"],
+    "United States": ["USA", "SHBA", "Vereinigte Staaten"],
+}
+
 _INDEX: dict[str, dict] = {}
 for names, zone, country, lat, lon, spec in PLACES:
     for n in names:
         _INDEX[n] = {"name": names[0], "zone": zone, "country": country, "lat": lat, "lon": lon, "specificity": spec}
+for canonical, aliases in ALIASES.items():
+    for alias in aliases:
+        _INDEX.setdefault(alias, _INDEX[canonical])
 
 # Longest names first so "Gulf of Finland" wins over "Finland"; case-sensitive to avoid noise.
 _PATTERN = re.compile(

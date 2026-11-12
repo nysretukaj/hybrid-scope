@@ -1,10 +1,7 @@
 import { analyzer, timeAgo } from '../lib/format'
+import { LANGS, useI18n } from '../lib/i18n'
 
-const TABS = [
-  ['alerts', 'Threat Board'],
-  ['signals', 'Signal Stream'],
-  ['analyze', 'Analyze Text'],
-]
+const TABS = ['board', 'network', 'signals', 'analyze']
 
 function Logo() {
   return (
@@ -19,9 +16,10 @@ function Logo() {
 }
 
 export default function Header({ view, setView, health, busy, onIngest, onReset }) {
+  const { t, lang, setLang } = useI18n()
   const last = health?.last_ingest
   return (
-    <header className="sticky top-0 z-[2000] border-b border-slate-800/80 bg-[#060a13]/90 backdrop-blur">
+    <header className="no-print sticky top-0 z-[2000] border-b border-slate-800/80 bg-[#060a13]/90 backdrop-blur">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3">
         <div className="flex items-center gap-3">
           <Logo />
@@ -29,18 +27,18 @@ export default function Header({ view, setView, health, busy, onIngest, onReset 
             <div className="text-[17px] font-semibold tracking-wide text-slate-100">
               Hybrid<span className="text-cyan-300">Scope</span>
             </div>
-            <div className="text-[10px] uppercase tracking-[0.2em] text-slate-500">OSINT · Hybrid threat intelligence</div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-slate-500">{t('app.subtitle')}</div>
           </div>
         </div>
 
         <nav className="flex gap-1 rounded-lg bg-slate-900/80 p-1 ring-1 ring-slate-800">
-          {TABS.map(([key, label]) => (
+          {TABS.map((key) => (
             <button
               key={key}
               onClick={() => setView(key)}
               className={`rounded-md px-3 py-1.5 text-sm transition ${view === key ? 'bg-slate-700/70 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
             >
-              {label}
+              {t(`tab.${key}`)}
             </button>
           ))}
         </nav>
@@ -48,25 +46,36 @@ export default function Header({ view, setView, health, busy, onIngest, onReset 
         <div className="ml-auto flex flex-wrap items-center gap-3 text-xs">
           <span className="flex items-center gap-2 text-slate-400">
             <span className="relative inline-block h-2 w-2 rounded-full text-emerald-400 live-dot" style={{ background: 'currentColor' }} />
-            Analyzer: <span className="text-slate-200">{health ? analyzer(health.analyzer).label : '-'}</span>
+            {t('hdr.analyzer')}: <span className="text-slate-200">{health ? analyzer(health.analyzer).label : '-'}</span>
           </span>
-          <span className="hidden text-slate-500 md:inline">
-            Live ingest: {last ? `${timeAgo(last.finished_at)} · ${last.fetched} items` : 'not run yet'}
+          <span className="hidden text-slate-500 xl:inline">
+            {t('hdr.liveIngest')}: {last ? `${timeAgo(last.finished_at)} · ${last.fetched} ${t('hdr.items')}` : t('hdr.notRun')}
           </span>
+          <div className="flex rounded-lg bg-slate-900/80 p-0.5 ring-1 ring-slate-800" role="group" aria-label="Language">
+            {LANGS.map(([code, label]) => (
+              <button
+                key={code}
+                onClick={() => setLang(code)}
+                className={`rounded-md px-2 py-1 font-mono text-[11px] ${lang === code ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <button
             onClick={onIngest}
             disabled={!!busy}
             className="rounded-lg bg-cyan-500/15 px-3 py-1.5 font-medium text-cyan-200 ring-1 ring-cyan-500/40 transition hover:bg-cyan-500/25 disabled:opacity-50"
           >
-            {busy === 'ingest' ? 'Ingesting…' : 'Ingest live sources'}
+            {busy === 'ingest' ? t('hdr.ingesting') : t('hdr.ingest')}
           </button>
           <button
             onClick={onReset}
             disabled={!!busy}
             className="rounded-lg px-3 py-1.5 text-slate-400 ring-1 ring-slate-700 transition hover:text-slate-200 disabled:opacity-50"
-            title="Re-anchor the synthetic exercise scenario to the current time"
+            title={t('hdr.resetTitle')}
           >
-            {busy === 'reset' ? 'Resetting…' : 'Reset scenario'}
+            {busy === 'reset' ? t('hdr.resetting') : t('hdr.reset')}
           </button>
         </div>
       </div>
