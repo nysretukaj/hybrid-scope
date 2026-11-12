@@ -1,12 +1,14 @@
 """HybridScope API."""
 import asyncio
 import logging
-from collections import Counter
+import secrets
+import time
+from collections import Counter, defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from typing import Literal, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -27,6 +29,34 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("hybridscope")
 
 STATE: dict = {"last_ingest": None, "ingest_running": False, "tasks": set()}
+_ANALYZE_HITS: dict[str, deque] = defaultdict(deque)
+
+
+# --- Public-mode guards ------------------------------------------------------------
+def is_admin(request: Request) -> bool:
+    token = request.headers.get("x-admin-token", "")
+    return bool(config.ADMIN_TOKEN) and secrets.compare_digest(token, config.ADMIN_TOKEN)
+
+
+def require_admin(request: Request) -> None:
+    """In the public deployment, only the presenter (X-Admin-Token) may change the demo's state."""
+    if config.PUBLIC_MODE and not is_admin(request):
+        raise HTTPException(403, "Disabled in the public demo")
+
+
+def limit_analyze(request: Request) -> None:
+    """Per-client limit on Analyze Text in the public deployment, to protect the LLM quota."""
+    if not config.PUBLIC_MODE or is_admin(request):
+        return
+    if len(_ANALYZE_HITS) > 5000:
+        _ANALYZE_HITS.clear()
+    hits = _ANALYZE_HITS[request.client.host if request.client else "?"]
+    now = time.monotonic()
+    while hits and now - hits[0] > 60:
+        hits.popleft()
+    if len(hits) >= config.ANALYZE_PER_MINUTE:
+        raise HTTPException(429, f"Public demo limit: {config.ANALYZE_PER_MINUTE} analyses per minute, please wait a moment")
+    hits.append(now)
 
 
 def start_enrichment(ids: list[str]) -> bool:
@@ -90,7 +120,9 @@ async def lifespan(_app: FastAPI):
         log.info("scenario loaded: %s signals", reset_seed())
     if config.DEMO_OFFLINE:
         log.info("OFFLINE DEMO: snapshot loaded, %s signals; no network calls will be made", load_snapshot())
-    elif config.llm_enabled():
+    elif config.LOAD_SNAPSHOT_ON_START:
+        log.info("snapshot loaded on start: %s signals", load_snapshot())
+    if not config.DEMO_OFFLINE and config.llm_enabled():
         # pick the models in the background so no request ever waits on the provider's model list
         warmup = asyncio.create_task(asyncio.to_thread(lambda: (resolve_model("analyze"), resolve_model("live"))))
         STATE["tasks"].add(warmup)
@@ -165,6 +197,7 @@ def health():
     return {
         "status": "ok",
         "offline": config.DEMO_OFFLINE,
+        "public_mode": config.PUBLIC_MODE,
         "snapshot": snapshot_info(),
         "analyzer": active_analyzer(),
         "llm_enabled": config.llm_enabled(),
@@ -255,20 +288,20 @@ class FeedbackRequest(BaseModel):
     note: str = Field(default="", max_length=1000)
 
 
-@app.post("/api/alerts/{alert_id}/feedback")
+@app.post("/api/alerts/{alert_id}/feedback", dependencies=[Depends(require_admin)])
 def post_feedback(alert_id: str, req: FeedbackRequest, source: str = "all"):
     alert = _find(alert_id, source)
     db.set_feedback(alert_id, req.verdict, req.note or None, alert["sources"], iso(utcnow()))
     return {"ok": True, "sources_updated": alert["sources"], "source_stats": db.source_feedback_stats()}
 
 
-@app.delete("/api/alerts/{alert_id}/feedback")
+@app.delete("/api/alerts/{alert_id}/feedback", dependencies=[Depends(require_admin)])
 def delete_feedback(alert_id: str):
     db.delete_feedback(alert_id)
     return {"ok": True}
 
 
-@app.post("/api/alerts/{alert_id}/notify")
+@app.post("/api/alerts/{alert_id}/notify", dependencies=[Depends(require_admin)])
 async def notify_alert(alert_id: str, source: str = "all"):
     if not notify.channels():
         raise HTTPException(400, "No notification channel configured (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID or ALERT_WEBHOOK_URL)")
@@ -301,14 +334,19 @@ def list_signals(
 
 
 @app.post("/api/ingest/live")
-async def ingest_live():
+async def ingest_live(request: Request):
+    last = STATE["last_ingest"]
+    if config.PUBLIC_MODE and last and not is_admin(request):
+        age = (utcnow() - parse_iso(last["finished_at"])).total_seconds()
+        if age < config.INGEST_COOLDOWN_S:
+            return {**last, "cooldown": True}  # fetched moments ago: show that run instead of refetching
     report = await ingest_once()
     if report is None:
         raise HTTPException(409, "Live ingestion already running")
     return report
 
 
-@app.post("/api/llm/enrich")
+@app.post("/api/llm/enrich", dependencies=[Depends(require_admin)])
 async def llm_backfill(limit: int = 60):
     """Upgrade the most recent live signals that were analysed only by the local NLP."""
     if not config.llm_enabled():
@@ -319,7 +357,7 @@ async def llm_backfill(limit: int = 60):
     return {"queued": len(ids), "started": start_enrichment(ids)}
 
 
-@app.post("/api/demo/reset")
+@app.post("/api/demo/reset", dependencies=[Depends(require_admin)])
 def demo_reset():
     db.clear_feedback()
     return {"loaded": reset_seed()}
@@ -331,13 +369,13 @@ class AnalyzeRequest(BaseModel):
     use_llm: bool = True
 
 
-@app.post("/api/analyze")
+@app.post("/api/analyze", dependencies=[Depends(limit_analyze)])
 def analyze_text(req: AnalyzeRequest):
     key = cache_key(req.title, req.text)
+    cached = db.cache_get(key)  # identical text analysed before: instant, and spares the LLM quota
+    if cached:
+        return {**cached, "cached": True}
     if config.DEMO_OFFLINE:
-        cached = db.cache_get(key)
-        if cached:
-            return {**cached, "cached": True}
         return {**analyze(req.title, req.text, use_llm=False), "offline": True}
     result = analyze(req.title, req.text, use_llm=req.use_llm)
     if result["analyzer"].startswith("llm:"):
@@ -350,7 +388,7 @@ def analyze_samples():
     return [{**s, "cached": db.cache_get(cache_key(s.get("title", ""), s["text"])) is not None} for s in load_samples()]
 
 
-@app.post("/api/demo/snapshot")
+@app.post("/api/demo/snapshot", dependencies=[Depends(require_admin)])
 async def demo_snapshot():
     if config.DEMO_OFFLINE:
         raise HTTPException(400, "Create the snapshot while online (DEMO_OFFLINE=0)")

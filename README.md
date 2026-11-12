@@ -92,6 +92,18 @@ What happens then:
 Local alternative without a key: `LLM_BASE_URL=http://localhost:11434/v1` and `LLM_MODEL=qwen2.5:7b` (Ollama).
 Other settings: `LIVE_INGEST_INTERVAL_MIN` (auto-ingest), `LOOKBACK_HOURS`, `CLUSTER_GAP_HOURS`, `RECENCY_HALF_LIFE_HOURS`.
 
+## Public URL (Render, free)
+The repo contains a `Dockerfile` (it builds the dashboard and serves it with the API on one port) and a `render.yaml` blueprint.
+
+1. Sign in at https://render.com with GitHub.
+2. Go to **New → Blueprint** and pick this repository. Render reads `render.yaml`.
+3. When asked, paste your Groq key as `LLM_API_KEY`. `ADMIN_TOKEN` is generated automatically.
+4. Click **Apply**. The first build takes ~5–8 minutes, and every push to `main` redeploys.
+
+The blueprint runs in **public mode**: visitors can browse everything and try Analyze Text (8 analyses per minute per visitor). Reset, analyst feedback, snapshot export and notifications need the `X-Admin-Token` header, and live ingest refetches at most every 3 minutes. Live sources refresh hourly with AI enrichment capped for the free Groq quota.
+
+Note: free Render instances sleep after ~15 minutes without traffic. Open the URL a minute before you present.
+
 ## Offline demo (no internet at the venue)
 The repo ships `backend/app/seed/live_snapshot.json`: real live signals already analysed by the LLM, plus cached LLM answers for the Analyze Text samples.
 

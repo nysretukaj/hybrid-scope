@@ -1,0 +1,23 @@
+# Render Blueprint: Dashboard -> New -> Blueprint -> pick this repository.
+# You will be asked for LLM_API_KEY (your Groq key); ADMIN_TOKEN is generated for you.
+services:
+  - type: web
+    name: hybridscope
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: PUBLIC_MODE              # visitors can look and try, not change the demo
+        value: "1"
+      - key: ADMIN_TOKEN              # presenter-only actions (send as X-Admin-Token header)
+        generateValue: true
+      - key: LOAD_SNAPSHOT_ON_START   # free instances start with an empty disk: show live data at once
+        value: "1"
+      - key: LIVE_INGEST_INTERVAL_MIN # refresh live sources every hour
+        value: "60"
+      - key: LLM_MAX_PER_INGEST       # keep within the free Groq daily quota
+        value: "25"
+      - key: LLM_API_KEY
+        sync: false

@@ -82,14 +82,14 @@ export default function Header({ view, setView, health, busy, onIngest, onReset 
           >
             {busy === 'ingest' ? t('hdr.ingesting') : t('hdr.ingest')}
           </button>
-          <button
+          {!health?.public_mode && <button
             onClick={onReset}
             disabled={!!busy}
             className="rounded-lg px-3 py-1.5 text-slate-400 ring-1 ring-slate-700 transition hover:text-slate-200 disabled:opacity-50"
             title={t('hdr.resetTitle')}
           >
             {busy === 'reset' ? t('hdr.resetting') : t('hdr.reset')}
-          </button>
+          </button>}
         </div>
       </div>
     </header>

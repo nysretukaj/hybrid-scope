@@ -79,6 +79,11 @@ export default function App() {
     setBusy('ingest')
     try {
       const r = await api.ingest()
+      if (r.cooldown) {
+        notify(t('t.cooldown'))
+        await refresh()
+        return
+      }
       const failed = r.sources.filter((s) => !s.ok).map((s) => s.source)
       notify(t('t.ingest', { f: r.fetched, i: r.inserted, r: r.threat_relevant }) + (failed.length ? ` · ${t('t.failed')}: ${failed.join(', ')}` : ''), failed.length ? 'warn' : 'ok')
       await refresh()
@@ -156,6 +161,7 @@ export default function App() {
               onFeedback={onFeedback}
               onClearFeedback={onClearFeedback}
               onNotify={onNotify}
+              publicMode={!!health?.public_mode}
             />
           </section>
         </main>
