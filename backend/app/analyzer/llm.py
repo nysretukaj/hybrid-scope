@@ -43,7 +43,7 @@ PREFERRED = {
     "live": ["llama-3.1-8b-instant", "gemini-2.0-flash-lite", "gemini-2.0-flash", "openai/gpt-oss-20b",
              "llama-3.3-70b-versatile"],
 }
-STATUS: dict = {"last_error": None, "rate_limited_until": 0.0, "models": {}}
+STATUS: dict = {"last_error": None, "rate_limited_until": 0.0, "models": {}, "transient": False}
 
 
 def _headers() -> dict:
@@ -54,6 +54,12 @@ def list_models() -> list[str]:
     resp = httpx.get(f"{config.LLM_BASE_URL}/models", headers=_headers(), timeout=15)
     resp.raise_for_status()
     return [str(m.get("id", "")).removeprefix("models/") for m in resp.json().get("data", []) if m.get("id")]
+
+
+def known_model(purpose: str = "analyze") -> str | None:
+    """The model in use, without any network call (for status endpoints)."""
+    explicit = config.LLM_MODEL if purpose == "analyze" else (config.LLM_MODEL_LIVE or config.LLM_MODEL)
+    return explicit or STATUS["models"].get(purpose)
 
 
 def resolve_model(purpose: str = "analyze") -> str | None:
@@ -104,6 +110,7 @@ def analyze_llm(title: str, text: str, purpose: str = "analyze") -> dict | None:
             {"role": "user", "content": f"TITLE: {title}\n\nTEXT: {text[:4000]}"},
         ],
     }
+    STATUS["transient"] = False
     try:
         resp = httpx.post(f"{config.LLM_BASE_URL}/chat/completions", json=payload, headers=_headers(), timeout=45)
         if resp.status_code == 429:
@@ -115,6 +122,9 @@ def analyze_llm(title: str, text: str, purpose: str = "analyze") -> dict | None:
         data = _extract_json(resp.json()["choices"][0]["message"]["content"])
     except Exception as exc:  # noqa: BLE001 - any provider failure falls back to local
         STATUS["last_error"] = f"{type(exc).__name__}: {exc}"[:200]
+        # network drops and timeouts are worth retrying; bad requests and parse errors are not
+        STATUS["transient"] = isinstance(exc, httpx.TransportError) or (
+            isinstance(exc, httpx.HTTPStatusError) and exc.response is not None and exc.response.status_code >= 500)
         log.warning("LLM analysis failed, using local analyzer: %s", exc)
         return None
 

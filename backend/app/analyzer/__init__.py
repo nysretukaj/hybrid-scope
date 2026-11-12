@@ -7,15 +7,15 @@ Providers:
 """
 from .. import config
 from .llm import STATUS as LLM_STATUS
-from .llm import analyze_llm, resolve_model
+from .llm import analyze_llm, known_model
 from .local import CATEGORY_LABELS, analyze_local, merge_entities
 
 
 def active_analyzer() -> str:
+    """Never touches the network: the model is resolved at startup and on first use."""
     if config.llm_enabled():
-        model = resolve_model("analyze")
-        if model:
-            return f"llm:{model}"
+        model = known_model("analyze")
+        return f"llm:{model}" if model else "llm:(connecting)"
     return "local-nlp"
 
 

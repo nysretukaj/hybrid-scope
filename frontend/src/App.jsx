@@ -146,7 +146,7 @@ export default function App() {
             <AlertList alerts={data.alerts} total={data.total} selectedId={selectedId} onSelect={setSelectedId} />
           </section>
           <section className="col-span-12 flex min-w-0 flex-col gap-4 lg:col-span-8 xl:col-span-9">
-            <ThreatMap alerts={data.alerts} selectedId={selectedId} detail={detail} onSelect={setSelectedId} />
+            <ThreatMap alerts={data.alerts} selectedId={selectedId} detail={detail} onSelect={setSelectedId} offline={health ? !!health.offline : null} />
             <AlertDetail
               key={detail?.id}
               alert={detail}

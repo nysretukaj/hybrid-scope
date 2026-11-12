@@ -1,7 +1,10 @@
-import { useEffect } from 'react'
-import { CircleMarker, MapContainer, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
+import { useEffect, useRef, useState } from 'react'
+import { CircleMarker, GeoJSON, MapContainer, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
 import { cat, level } from '../lib/format'
 import { useI18n } from '../lib/i18n'
+
+const TILE_ERRORS_BEFORE_FALLBACK = 4
+const VECTOR_STYLE = { color: '#334155', weight: 0.8, fillColor: '#111a2e', fillOpacity: 1 }
 
 function FlyTo({ target, id }) {
   const map = useMap()
@@ -12,22 +15,56 @@ function FlyTo({ target, id }) {
   return null
 }
 
-export default function ThreatMap({ alerts, selectedId, detail, onSelect }) {
+/** Country outlines bundled with the app (Natural Earth via world-atlas), loaded only when needed. */
+function useVectorBasemap(enabled) {
+  const [geo, setGeo] = useState(null)
+  useEffect(() => {
+    if (!enabled || geo) return
+    let alive = true
+    Promise.all([import('world-atlas/countries-50m.json'), import('topojson-client')]).then(([topo, tc]) => {
+      const t = topo.default || topo
+      if (alive) setGeo(tc.feature(t, t.objects.countries))
+    })
+    return () => { alive = false }
+  }, [enabled, geo])
+  return geo
+}
+
+export default function ThreatMap({ alerts, selectedId, detail, onSelect, offline }) {
   const { t } = useI18n()
+  const [tilesFailed, setTilesFailed] = useState(false)
+  const tileErrors = useRef(0)
+  // offline is null until the backend has answered: draw no basemap yet, so an offline demo
+  // never even tries to reach the tile server
+  const useVector = offline === true || tilesFailed
+  const showTiles = offline === false && !tilesFailed
+  const geo = useVectorBasemap(useVector)
   const located = detail?.signals?.filter((s) => s.lat != null) || []
+
+  const onTileError = () => {
+    tileErrors.current += 1
+    if (tileErrors.current >= TILE_ERRORS_BEFORE_FALLBACK) setTilesFailed(true)
+  }
+
   return (
     <div className="panel relative overflow-hidden">
-      <MapContainer center={[50, 15]} zoom={4} minZoom={2} worldCopyJump className="h-[340px] w-full" zoomControl={false}>
-        <TileLayer
-          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
-          attribution="Tiles &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors"
-          maxZoom={16}
-        />
-        <TileLayer
-          url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
-          maxZoom={16}
-          opacity={0.6}
-        />
+      <MapContainer center={[50, 15]} zoom={4} minZoom={2} maxZoom={useVector ? 8 : 16} worldCopyJump className="h-[340px] w-full" zoomControl={false}>
+        {useVector && geo && <GeoJSON key="vector-basemap" data={geo} style={VECTOR_STYLE} interactive={false} />}
+        {showTiles && (
+          <>
+            <TileLayer
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+              attribution="Tiles &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors"
+              maxZoom={16}
+              eventHandlers={{ tileerror: onTileError }}
+            />
+            <TileLayer
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
+              maxZoom={16}
+              opacity={0.6}
+            />
+          </>
+        )}
         {alerts.filter((a) => a.centroid).map((a) => {
           const l = level(a.level)
           const selected = a.id === selectedId
@@ -64,6 +101,7 @@ export default function ThreatMap({ alerts, selectedId, detail, onSelect }) {
         <span>{t('m.hybrid')}</span>
         <span>{t('m.single')}</span>
         <span>{t('m.size')}</span>
+        {useVector && <span className="text-amber-300/80">{t('m.offlineMap')}</span>}
       </div>
     </div>
   )

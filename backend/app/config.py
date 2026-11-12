@@ -32,6 +32,13 @@ FRONTEND_DIST = PROJECT_DIR / "frontend" / "dist"
 # Re-anchor the synthetic scenario to "now" on every start so the demo always looks fresh.
 SEED_ON_START = os.getenv("SEED_ON_START", "1") == "1"
 
+# Offline demo: no network calls at all. Live ingest replays a saved snapshot of real, AI-analysed
+# signals; Analyze Text answers from cached LLM results. Create the snapshot while online with
+# POST /api/demo/snapshot (or `python -m app.snapshot`).
+DEMO_OFFLINE = os.getenv("DEMO_OFFLINE", "0") == "1"
+SNAPSHOT_PATH = APP_DIR / "seed" / "live_snapshot.json"
+SAMPLES_PATH = APP_DIR / "seed" / "analyze_samples.json"
+
 # --- Correlation & scoring -------------------------------------------------
 LOOKBACK_HOURS = float(os.getenv("LOOKBACK_HOURS", "240"))          # signals older than this are ignored
 CLUSTER_GAP_HOURS = float(os.getenv("CLUSTER_GAP_HOURS", "48"))     # max gap inside one regional cluster
@@ -110,4 +117,4 @@ PUBLIC_URL = os.getenv("PUBLIC_URL", "").rstrip("/")
 
 
 def llm_enabled() -> bool:
-    return bool(LLM_BASE_URL and (LLM_MODEL or LLM_API_KEY))
+    return bool(LLM_BASE_URL and (LLM_MODEL or LLM_API_KEY)) and not DEMO_OFFLINE

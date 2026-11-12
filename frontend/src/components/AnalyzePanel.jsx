@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 import { CATEGORY_ORDER, cat, pct } from '../lib/format'
 import { useI18n } from '../lib/i18n'
@@ -29,11 +29,17 @@ const SAMPLES = [
 
 export default function AnalyzePanel() {
   const { t } = useI18n()
+  const [samples, setSamples] = useState(SAMPLES)
   const [title, setTitle] = useState(SAMPLES[0].title)
   const [text, setText] = useState(SAMPLES[0].text)
   const [result, setResult] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+
+  // Samples come from the backend so their AI answers can be cached for the offline demo.
+  useEffect(() => {
+    api.samples().then((s) => s?.length && setSamples(s)).catch(() => {})
+  }, [])
 
   const run = async () => {
     setBusy(true); setError(null)
@@ -47,9 +53,9 @@ export default function AnalyzePanel() {
       <div className="panel p-4">
         <SectionTitle>{t('a.paste')}</SectionTitle>
         <div className="mb-3 flex flex-wrap gap-1.5">
-          {SAMPLES.map((s) => (
-            <button key={s.label} onClick={() => { setTitle(s.title); setText(s.text); setResult(null) }} className="rounded-md px-2 py-1 text-[11px] text-slate-400 ring-1 ring-slate-700 hover:text-slate-200">
-              {s.label}
+          {samples.map((s) => (
+            <button key={s.label} onClick={() => { setTitle(s.title); setText(s.text); setResult(null) }} title={s.cached ? t('a.cachedSample') : ''} className="rounded-md px-2 py-1 text-[11px] text-slate-400 ring-1 ring-slate-700 hover:text-slate-200">
+              {s.label}{s.cached && <span className="ml-1 text-emerald-400">●</span>}
             </button>
           ))}
         </div>
@@ -70,6 +76,8 @@ export default function AnalyzePanel() {
               <CategoryBadge category={result.category} />
               {result.tags.map((tg) => <CategoryBadge key={tg} category={tg} small />)}
               <AnalyzerBadge value={result.analyzer} />
+              {result.cached && <span className="rounded px-1.5 py-0.5 text-[10px] text-amber-300 ring-1 ring-amber-500/30">{t('a.cached')}</span>}
+              {result.offline && <span className="rounded px-1.5 py-0.5 text-[10px] text-amber-300 ring-1 ring-amber-500/30">{t('a.offlineLocal')}</span>}
             </div>
             <div className="grid grid-cols-3 gap-3">
               {[[t('a.severity'), result.severity.toFixed(2)], [t('a.confidence'), pct(result.confidence)], [t('a.region'), result.location?.zone || '—']].map(([k, v]) => (

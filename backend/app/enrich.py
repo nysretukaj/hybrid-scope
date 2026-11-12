@@ -33,13 +33,18 @@ async def enrich_signals(ids: list[str]) -> dict:
         try:
             for s in sigs:
                 result = None
-                for _attempt in range(4):  # a rate-limited call is retried after the provider's pause
+                for attempt in range(4):  # retry after rate limits and short network drops
                     while rate_limited():
                         await asyncio.sleep(1)
                     started = time.monotonic()
                     result = await asyncio.to_thread(analyze_llm, s["title"], s["text"], "live")
                     await asyncio.sleep(max(0.0, interval - (time.monotonic() - started)))
-                    if result or not rate_limited():
+                    if result:
+                        break
+                    if LLM_STATUS.get("transient"):
+                        await asyncio.sleep(5 * (attempt + 1))  # back off: 5 s, 10 s, 15 s
+                        continue
+                    if not rate_limited():
                         break
                 if result:
                     consecutive_failures = 0

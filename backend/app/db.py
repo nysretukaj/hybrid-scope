@@ -41,6 +41,13 @@ CREATE TABLE IF NOT EXISTS notifications (
     alert_id TEXT PRIMARY KEY,
     sent_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS analyze_cache (
+    key TEXT PRIMARY KEY,           -- hash of the normalized title + text
+    title TEXT,
+    text TEXT NOT NULL,
+    result TEXT NOT NULL,           -- JSON of the LLM-backed analysis
+    created_at TEXT NOT NULL
+);
 """
 
 COLUMNS = [
@@ -195,6 +202,38 @@ def source_feedback_stats() -> dict[str, dict]:
         for src in fb["sources"]:
             stats.setdefault(src, {"confirmed": 0, "rejected": 0})[key] += 1
     return stats
+
+
+# --- Analyze cache (offline demo) -------------------------------------------
+def cache_put(key: str, title: str, text: str, result: dict, created_at: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO analyze_cache (key, title, text, result, created_at) VALUES (?, ?, ?, ?, ?)",
+            (key, title, text, json.dumps(result, ensure_ascii=False), created_at),
+        )
+
+
+def cache_get(key: str) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute("SELECT result FROM analyze_cache WHERE key = ?", (key,)).fetchone()
+    return json.loads(row[0]) if row else None
+
+
+def cache_all() -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT key, title, text, result, created_at FROM analyze_cache").fetchall()
+    return [{**dict(r), "result": json.loads(r["result"])} for r in rows]
+
+
+def upsert_signals(signals: list[dict]) -> int:
+    """Insert or replace (used to re-anchor snapshot signals to the current time)."""
+    if not signals:
+        return 0
+    cols = ", ".join(COLUMNS)
+    qs = ", ".join("?" for _ in COLUMNS)
+    with get_conn() as conn:
+        conn.executemany(f"INSERT OR REPLACE INTO signals ({cols}) VALUES ({qs})", [_to_row(s) for s in signals])
+    return len(signals)
 
 
 # --- Notifications ----------------------------------------------------------

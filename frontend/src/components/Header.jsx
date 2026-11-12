@@ -44,6 +44,11 @@ export default function Header({ view, setView, health, busy, onIngest, onReset 
         </nav>
 
         <div className="ml-auto flex flex-wrap items-center gap-3 text-xs">
+          {health?.offline && (
+            <span className="rounded-md bg-amber-500/15 px-2 py-1 font-mono text-[11px] font-semibold tracking-wider text-amber-300 ring-1 ring-amber-500/40" title={health.snapshot ? `snapshot ${health.snapshot.exported_at} · ${health.snapshot.signals} signals` : ''}>
+              {t('hdr.offline')}
+            </span>
+          )}
           <span className="flex items-center gap-2 text-slate-400">
             <span className="relative inline-block h-2 w-2 rounded-full text-emerald-400 live-dot" style={{ background: 'currentColor' }} />
             {t('hdr.analyzer')}: <span className="text-slate-200">{health ? analyzer(health.analyzer).label : '-'}</span>

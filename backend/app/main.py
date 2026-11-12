@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from . import config, db, enrich, notify
 from .analyzer import LLM_STATUS, active_analyzer, analyze
-from .analyzer.llm import resolve_model
+from .analyzer.llm import known_model, resolve_model
 from .brief import build_brief
 from .correlation import build_alerts, replay
 from .feedback import apply_feedback
@@ -21,6 +21,7 @@ from .graph import build_graph
 from .ingest.live import run_live_ingest
 from .ingest.seed import reset_seed
 from .normalize import iso, parse_iso, utcnow
+from .snapshot import cache_key, export_snapshot, load_samples, load_snapshot, snapshot_info
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("hybridscope")
@@ -43,6 +44,8 @@ async def ingest_once() -> dict | None:
         return None
     STATE["ingest_running"] = True
     try:
+        if config.DEMO_OFFLINE:
+            return await _offline_ingest()
         report = await run_live_ingest()
         report["llm_enrichment"] = start_enrichment(report.pop("new_ids", []))
         alerts, _ = _alerts("all")
@@ -52,6 +55,22 @@ async def ingest_once() -> dict | None:
         return report
     finally:
         STATE["ingest_running"] = False
+
+
+async def _offline_ingest() -> dict:
+    """Offline demo: replay the saved snapshot of real, AI-analysed signals as if just fetched."""
+    started = utcnow()
+    loaded = await asyncio.to_thread(load_snapshot)
+    live = [s for s in await asyncio.to_thread(db.fetch_signals) if not s["synthetic"]]
+    report = {
+        "started_at": iso(started), "finished_at": iso(utcnow()), "offline": True,
+        "fetched": loaded, "inserted": loaded, "threat_relevant": sum(1 for s in live if s["category"] != "other"),
+        "sources": [{"source": "offline snapshot", "ok": loaded > 0, "items": loaded,
+                     **({} if loaded else {"error": "no snapshot found: create one online first"})}],
+        "notified": 0, "llm_enrichment": False,
+    }
+    STATE["last_ingest"] = report
+    return report
 
 
 async def live_loop():
@@ -69,6 +88,13 @@ async def lifespan(_app: FastAPI):
     if config.SEED_ON_START or db.count_signals() == 0:
         db.clear_feedback()
         log.info("scenario loaded: %s signals", reset_seed())
+    if config.DEMO_OFFLINE:
+        log.info("OFFLINE DEMO: snapshot loaded, %s signals; no network calls will be made", load_snapshot())
+    elif config.llm_enabled():
+        # pick the models in the background so no request ever waits on the provider's model list
+        warmup = asyncio.create_task(asyncio.to_thread(lambda: (resolve_model("analyze"), resolve_model("live"))))
+        STATE["tasks"].add(warmup)
+        warmup.add_done_callback(STATE["tasks"].discard)
     task = asyncio.create_task(live_loop()) if config.LIVE_INGEST_INTERVAL_MIN > 0 else None
     yield
     if task:
@@ -76,6 +102,16 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="HybridScope API", version="0.2.0", lifespan=lifespan)
+@app.middleware("http")
+async def no_cache_html(request, call_next):
+    """Always revalidate the dashboard's HTML so a rebuilt frontend is picked up immediately
+    (the hashed JS/CSS assets can still be cached)."""
+    response = await call_next(request)
+    if response.headers.get("content-type", "").startswith("text/html"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -128,12 +164,14 @@ def _light(a: dict) -> dict:
 def health():
     return {
         "status": "ok",
+        "offline": config.DEMO_OFFLINE,
+        "snapshot": snapshot_info(),
         "analyzer": active_analyzer(),
         "llm_enabled": config.llm_enabled(),
         "llm": {
             "provider": config.LLM_BASE_URL.split("/")[2] if config.llm_enabled() else None,
-            "model_analyze": resolve_model("analyze") if config.llm_enabled() else None,
-            "model_live": resolve_model("live") if config.llm_enabled() else None,
+            "model_analyze": known_model("analyze") if config.llm_enabled() else None,
+            "model_live": known_model("live") if config.llm_enabled() else None,
             "live_enrichment": config.LLM_FOR_LIVE,
             "enrich": {k: v for k, v in enrich.STATE.items() if k != "started_at"},
             "last_error": LLM_STATUS["last_error"],
@@ -295,7 +333,28 @@ class AnalyzeRequest(BaseModel):
 
 @app.post("/api/analyze")
 def analyze_text(req: AnalyzeRequest):
-    return analyze(req.title, req.text, use_llm=req.use_llm)
+    key = cache_key(req.title, req.text)
+    if config.DEMO_OFFLINE:
+        cached = db.cache_get(key)
+        if cached:
+            return {**cached, "cached": True}
+        return {**analyze(req.title, req.text, use_llm=False), "offline": True}
+    result = analyze(req.title, req.text, use_llm=req.use_llm)
+    if result["analyzer"].startswith("llm:"):
+        db.cache_put(key, req.title, req.text, result, iso(utcnow()))  # replayable in the offline demo
+    return result
+
+
+@app.get("/api/analyze/samples")
+def analyze_samples():
+    return [{**s, "cached": db.cache_get(cache_key(s.get("title", ""), s["text"])) is not None} for s in load_samples()]
+
+
+@app.post("/api/demo/snapshot")
+async def demo_snapshot():
+    if config.DEMO_OFFLINE:
+        raise HTTPException(400, "Create the snapshot while online (DEMO_OFFLINE=0)")
+    return await asyncio.to_thread(export_snapshot)
 
 
 # Serve the built dashboard (frontend/dist) from the same port when it exists.
