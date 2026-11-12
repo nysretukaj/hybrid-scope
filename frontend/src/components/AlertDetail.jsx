@@ -79,12 +79,20 @@ function Ttps({ ttps, onJump }) {
   )
 }
 
-function FeedbackBar({ alert, onFeedback, onClearFeedback, notifyEnabled, onNotify }) {
+function FeedbackBar({ alert, onFeedback, onClearFeedback, notifyEnabled, onNotify, publicMode }) {
   const { t } = useI18n()
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const run = async (fn) => { setBusy(true); try { await fn() } finally { setBusy(false) } }
   const fb = alert.feedback
+
+  if (publicMode) {
+    return (
+      <div className="mt-4 rounded-lg bg-slate-950/50 p-2.5 text-[11px] text-slate-500 ring-1 ring-slate-800">
+        {t('d.publicReadOnly')}
+      </div>
+    )
+  }
 
   return (
     <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg bg-slate-950/50 p-2.5 ring-1 ring-slate-800">
@@ -166,7 +174,7 @@ function Evidence({ signal, active, links }) {
   )
 }
 
-export default function AlertDetail({ alert, loading, source, notifyEnabled, onFeedback, onClearFeedback, onNotify }) {
+export default function AlertDetail({ alert, loading, source, notifyEnabled, onFeedback, onClearFeedback, onNotify, publicMode }) {
   const { t } = useI18n()
   const [activeSignal, setActiveSignal] = useState(null)
   const [replayOpen, setReplayOpen] = useState(false)
@@ -211,7 +219,7 @@ export default function AlertDetail({ alert, loading, source, notifyEnabled, onF
         </div>
       </div>
 
-      <FeedbackBar alert={alert} onFeedback={onFeedback} onClearFeedback={onClearFeedback} notifyEnabled={notifyEnabled} onNotify={onNotify} />
+      <FeedbackBar alert={alert} onFeedback={onFeedback} onClearFeedback={onClearFeedback} notifyEnabled={notifyEnabled} onNotify={onNotify} publicMode={publicMode} />
 
       {replayOpen && <ReplayPanel alertId={alert.id} source={source} onFrame={onFrame} onClose={() => setReplayOpen(false)} />}
 

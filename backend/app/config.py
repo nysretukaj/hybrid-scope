@@ -36,6 +36,15 @@ SEED_ON_START = os.getenv("SEED_ON_START", "1") == "1"
 # signals; Analyze Text answers from cached LLM results. Create the snapshot while online with
 # POST /api/demo/snapshot (or `python -m app.snapshot`).
 DEMO_OFFLINE = os.getenv("DEMO_OFFLINE", "0") == "1"
+# Also load the snapshot when online (e.g. on a fresh cloud instance, so live data shows at once).
+LOAD_SNAPSHOT_ON_START = os.getenv("LOAD_SNAPSHOT_ON_START", "0") == "1"
+
+# Public deployment: anyone with the link can look and try Analyze Text, but cannot change the demo.
+# State-changing endpoints need the X-Admin-Token header to match ADMIN_TOKEN.
+PUBLIC_MODE = os.getenv("PUBLIC_MODE", "0") == "1"
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
+ANALYZE_PER_MINUTE = int(os.getenv("ANALYZE_PER_MINUTE", "8"))   # per client IP, public mode only
+INGEST_COOLDOWN_S = int(os.getenv("INGEST_COOLDOWN_S", "180"))   # public mode only
 SNAPSHOT_PATH = APP_DIR / "seed" / "live_snapshot.json"
 SAMPLES_PATH = APP_DIR / "seed" / "analyze_samples.json"
 
