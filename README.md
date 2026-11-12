@@ -92,6 +92,25 @@ What happens then:
 Local alternative without a key: `LLM_BASE_URL=http://localhost:11434/v1` and `LLM_MODEL=qwen2.5:7b` (Ollama).
 Other settings: `LIVE_INGEST_INTERVAL_MIN` (auto-ingest), `LOOKBACK_HOURS`, `CLUSTER_GAP_HOURS`, `RECENCY_HALF_LIFE_HOURS`.
 
+## Offline demo (no internet at the venue)
+The repo ships `backend/app/seed/live_snapshot.json`: real live signals already analysed by the LLM, plus cached LLM answers for the Analyze Text samples.
+
+```powershell
+cd backend; $env:DEMO_OFFLINE = "1"; .\.venv\Scripts\python -m uvicorn app.main:app --port 8000
+```
+
+In offline mode the API makes **no network calls**. The UI shows an `OFFLINE DEMO` badge.
+- The snapshot loads re-anchored to the current time, so it looks fresh.
+- **Ingest live sources** replays the snapshot.
+- **Analyze Text** answers from the cached AI results. Other texts fall back to local NLP.
+- The map switches to bundled country outlines, and fonts are self-hosted.
+
+To refresh the snapshot the day before the demo, run online with an LLM key: click **Ingest live sources** and wait for the "AI upgrading" badge to finish. Optionally try more texts in **Analyze Text**, since every LLM answer is cached. Then:
+```powershell
+Invoke-RestMethod -Method Post http://localhost:8000/api/demo/snapshot    # or: python -m app.snapshot
+```
+Only titles, short excerpts (≤ 280 characters) and links of third-party articles are stored.
+
 ## Optional: push notifications
 ```powershell
 $env:TELEGRAM_BOT_TOKEN = "<from @BotFather>"; $env:TELEGRAM_CHAT_ID = "<chat id>"

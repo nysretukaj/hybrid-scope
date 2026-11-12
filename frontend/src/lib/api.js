@@ -37,4 +37,6 @@ export const api = {
   ingest: () => post('/api/ingest/live'),
   reset: () => post('/api/demo/reset'),
   analyze: (body) => post('/api/analyze', body),
+  samples: () => fetch('/api/analyze/samples').then(json),
+  snapshot: () => post('/api/demo/snapshot'),
 }

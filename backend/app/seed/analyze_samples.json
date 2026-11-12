@@ -1,0 +1,27 @@
+[
+  {
+    "label": "EN · Cyber + infra",
+    "title": "Hackers hit water utility in Riga",
+    "text": "A hacktivist group claimed it breached the SCADA system of a water treatment plant in Riga, exploiting CVE-2025-1234 in an exposed HMI. The utility confirmed a brief supply disruption."
+  },
+  {
+    "label": "SQ · Dezinformim",
+    "title": "",
+    "text": "Një video deepfake e kryeministrit që njofton mobilizim po përhapet nga llogari të rreme në TikTok dhe Telegram në Prishtinë. Verifikuesit e fakteve thonë se janë lajme të rreme. #MobilizimiTani"
+  },
+  {
+    "label": "SQ · Infrastrukturë",
+    "title": "",
+    "text": "Sulm kibernetik ndaj operatorit të rrjetit elektrik shkakton ndërprerje të rrymës në Mitrovicë dhe Prizren; hakerët pretendojnë qasje në sistemin SCADA."
+  },
+  {
+    "label": "DE · Physisch",
+    "title": "",
+    "text": "Drohnen über einem Kraftwerk bei Wien gesichtet; die Polizei ermittelt wegen möglicher Sabotage an einer nahegelegenen Bahnstrecke."
+  },
+  {
+    "label": "EN · Not a threat",
+    "title": "Club announces new striker",
+    "text": "The football club in Madrid confirmed the transfer after a long negotiation; fans attacked the decision online."
+  }
+]
