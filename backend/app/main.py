@@ -11,8 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import config, db, notify
-from .analyzer import active_analyzer, analyze
+from . import config, db, enrich, notify
+from .analyzer import LLM_STATUS, active_analyzer, analyze
+from .analyzer.llm import resolve_model
 from .brief import build_brief
 from .correlation import build_alerts, replay
 from .feedback import apply_feedback
@@ -24,7 +25,17 @@ from .normalize import iso, parse_iso, utcnow
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("hybridscope")
 
-STATE: dict = {"last_ingest": None, "ingest_running": False}
+STATE: dict = {"last_ingest": None, "ingest_running": False, "tasks": set()}
+
+
+def start_enrichment(ids: list[str]) -> bool:
+    """Upgrade signals with the LLM in the background (keeps a reference so the task is not GC'd)."""
+    if not (config.llm_enabled() and config.LLM_FOR_LIVE and ids):
+        return False
+    task = asyncio.create_task(enrich.enrich_signals(ids))
+    STATE["tasks"].add(task)
+    task.add_done_callback(STATE["tasks"].discard)
+    return True
 
 
 async def ingest_once() -> dict | None:
@@ -33,6 +44,7 @@ async def ingest_once() -> dict | None:
     STATE["ingest_running"] = True
     try:
         report = await run_live_ingest()
+        report["llm_enrichment"] = start_enrichment(report.pop("new_ids", []))
         alerts, _ = _alerts("all")
         report["notified"] = await notify.notify_new(alerts)
         STATE["last_ingest"] = report
@@ -118,6 +130,14 @@ def health():
         "status": "ok",
         "analyzer": active_analyzer(),
         "llm_enabled": config.llm_enabled(),
+        "llm": {
+            "provider": config.LLM_BASE_URL.split("/")[2] if config.llm_enabled() else None,
+            "model_analyze": resolve_model("analyze") if config.llm_enabled() else None,
+            "model_live": resolve_model("live") if config.llm_enabled() else None,
+            "live_enrichment": config.LLM_FOR_LIVE,
+            "enrich": {k: v for k, v in enrich.STATE.items() if k != "started_at"},
+            "last_error": LLM_STATUS["last_error"],
+        },
         "notify_channels": notify.channels(),
         "live_interval_min": config.LIVE_INGEST_INTERVAL_MIN,
         "signals": db.count_signals(),
@@ -248,6 +268,17 @@ async def ingest_live():
     if report is None:
         raise HTTPException(409, "Live ingestion already running")
     return report
+
+
+@app.post("/api/llm/enrich")
+async def llm_backfill(limit: int = 60):
+    """Upgrade the most recent live signals that were analysed only by the local NLP."""
+    if not config.llm_enabled():
+        raise HTTPException(400, "No LLM configured: set LLM_API_KEY in backend/.env")
+    if enrich.STATE["running"]:
+        raise HTTPException(409, "LLM enrichment already running")
+    ids = db.fetch_unenriched_live(max(1, min(limit, 500)))
+    return {"queued": len(ids), "started": start_enrichment(ids)}
 
 
 @app.post("/api/demo/reset")

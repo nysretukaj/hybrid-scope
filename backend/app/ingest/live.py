@@ -13,7 +13,7 @@ import httpx
 
 from .. import config, db
 from ..analyzer import analyze
-from ..normalize import build_signal, iso, utcnow
+from ..normalize import build_signal, iso, make_id, utcnow
 
 _TAGS = re.compile(r"<[^>]+>")
 _WS = re.compile(r"\s+")
@@ -74,9 +74,10 @@ async def fetch_gdelt(client: httpx.AsyncClient) -> list[dict]:
 
 
 def _analyze_all(raw: list[dict]) -> list[dict]:
+    """Fast local analysis only; the LLM upgrades new signals afterwards in the background (enrich.py)."""
     out = []
     for r in raw:
-        analysis = analyze(r["title"], r["text"], use_llm=config.LLM_FOR_LIVE)
+        analysis = analyze(r["title"], r["text"], use_llm=False)
         out.append(build_signal(
             source_name=r["source_name"], source_type=r["source_type"], reliability=r["reliability"],
             title=r["title"], text=r["text"], url=r["url"], timestamp=r["timestamp"], analysis=analysis,
@@ -99,10 +100,14 @@ async def run_live_ingest() -> dict:
             raw.extend(res)
             report.append({"source": name, "ok": True, "items": len(res)})
 
-    signals = await asyncio.to_thread(_analyze_all, [r for r in raw if r["title"]])
+    raw = [r for r in raw if r["title"]]
+    known = await asyncio.to_thread(db.existing_ids, [make_id(r["url"], r["source_name"], r["title"]) for r in raw])
+    fresh = [r for r in raw if make_id(r["url"], r["source_name"], r["title"]) not in known]
+    signals = await asyncio.to_thread(_analyze_all, fresh)
     inserted = await asyncio.to_thread(db.insert_signals, signals)
     relevant = sum(1 for s in signals if s["category"] != "other")
     return {
         "started_at": iso(started), "finished_at": iso(utcnow()),
-        "fetched": len(signals), "inserted": inserted, "threat_relevant": relevant, "sources": report,
+        "fetched": len(raw), "inserted": inserted, "threat_relevant": relevant, "sources": report,
+        "new_ids": [s["id"] for s in signals],
     }

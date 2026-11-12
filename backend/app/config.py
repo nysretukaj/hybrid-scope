@@ -5,6 +5,25 @@ from pathlib import Path
 APP_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = APP_DIR.parent
 PROJECT_DIR = BACKEND_DIR.parent
+
+
+def _load_dotenv(path: Path) -> None:
+    """Minimal KEY=VALUE loader so secrets live in backend/.env (git-ignored), never in code.
+    Real environment variables win over the file."""
+    if not path.exists():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key, value = key.strip(), value.strip().strip('"').strip("'")
+        if key and value and key not in os.environ:
+            os.environ[key] = value
+
+
+if os.getenv("HYBRIDSCOPE_SKIP_DOTENV") != "1":
+    _load_dotenv(BACKEND_DIR / ".env")
 DATA_DIR = BACKEND_DIR / "data"
 DB_PATH = Path(os.getenv("OSINT_DB_PATH", str(DATA_DIR / "osint.db")))
 SEED_PATH = APP_DIR / "seed" / "scenario.json"
@@ -62,10 +81,24 @@ DOMAIN_RELIABILITY = {
 DEFAULT_RELIABILITY = 0.55
 
 # --- Optional LLM provider (OpenAI-compatible: Groq, Gemini, Ollama, ...) ---
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "").rstrip("/")
-LLM_API_KEY = os.getenv("LLM_API_KEY", "")
-LLM_MODEL = os.getenv("LLM_MODEL", "")
-LLM_FOR_LIVE = os.getenv("LLM_FOR_LIVE", "0") == "1"  # also run the LLM on every live item (rate limits!)
+LLM_API_KEY = os.getenv("LLM_API_KEY", "").strip()
+# Provider auto-detected from the key prefix when LLM_BASE_URL is not set.
+_KEY_PROVIDERS = {
+    "gsk_": "https://api.groq.com/openai/v1",
+    "AIza": "https://generativelanguage.googleapis.com/v1beta/openai",
+}
+
+
+def detect_base_url(key: str, explicit: str = "") -> str:
+    return (explicit or next((url for prefix, url in _KEY_PROVIDERS.items() if key.startswith(prefix)), "")).rstrip("/")
+
+
+LLM_BASE_URL = detect_base_url(LLM_API_KEY, os.getenv("LLM_BASE_URL", ""))
+LLM_MODEL = os.getenv("LLM_MODEL", "")            # empty = pick the best available model automatically
+LLM_MODEL_LIVE = os.getenv("LLM_MODEL_LIVE", "")  # empty = pick a fast model for bulk live analysis
+LLM_FOR_LIVE = os.getenv("LLM_FOR_LIVE", "1") == "1"  # upgrade live signals with the LLM in the background
+LLM_MAX_PER_INGEST = int(os.getenv("LLM_MAX_PER_INGEST", "60"))
+LLM_RPM = float(os.getenv("LLM_RPM", "20"))       # stay under free-tier request/token-per-minute limits
 
 
 # --- Notifications ------------------------------------------------------------
@@ -77,4 +110,4 @@ PUBLIC_URL = os.getenv("PUBLIC_URL", "").rstrip("/")
 
 
 def llm_enabled() -> bool:
-    return bool(LLM_BASE_URL and LLM_MODEL)
+    return bool(LLM_BASE_URL and (LLM_MODEL or LLM_API_KEY))

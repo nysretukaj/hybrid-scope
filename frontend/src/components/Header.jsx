@@ -48,6 +48,14 @@ export default function Header({ view, setView, health, busy, onIngest, onReset 
             <span className="relative inline-block h-2 w-2 rounded-full text-emerald-400 live-dot" style={{ background: 'currentColor' }} />
             {t('hdr.analyzer')}: <span className="text-slate-200">{health ? analyzer(health.analyzer).label : '-'}</span>
           </span>
+          {health?.llm?.enrich?.running && (
+            <span className="rounded-md bg-emerald-500/10 px-2 py-1 font-mono text-[11px] text-emerald-300 ring-1 ring-emerald-500/30" title={health.llm.model_live}>
+              {t('hdr.aiUpgrading', { done: health.llm.enrich.done, n: health.llm.enrich.queued })}
+            </span>
+          )}
+          {health?.llm?.last_error && !health?.llm?.enrich?.running && (
+            <span className="max-w-56 truncate text-[11px] text-amber-400" title={health.llm.last_error}>⚠ LLM: {health.llm.last_error}</span>
+          )}
           <span className="hidden text-slate-500 xl:inline">
             {t('hdr.liveIngest')}: {last ? `${timeAgo(last.finished_at)} · ${last.fetched} ${t('hdr.items')}` : t('hdr.notRun')}
           </span>

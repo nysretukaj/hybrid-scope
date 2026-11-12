@@ -108,6 +108,50 @@ def fetch_signals(since_iso: str | None = None, limit: int | None = None) -> lis
         return [_from_row(r) for r in conn.execute(query, params).fetchall()]
 
 
+def existing_ids(ids: list[str]) -> set[str]:
+    if not ids:
+        return set()
+    found: set[str] = set()
+    with get_conn() as conn:
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            qs = ",".join("?" for _ in chunk)
+            found |= {r[0] for r in conn.execute(f"SELECT id FROM signals WHERE id IN ({qs})", chunk)}
+    return found
+
+
+def fetch_by_ids(ids: list[str]) -> list[dict]:
+    if not ids:
+        return []
+    out: list[dict] = []
+    with get_conn() as conn:
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            qs = ",".join("?" for _ in chunk)
+            out += [_from_row(r) for r in conn.execute(f"SELECT * FROM signals WHERE id IN ({qs})", chunk)]
+    return out
+
+
+def fetch_unenriched_live(limit: int) -> list[str]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id FROM signals WHERE synthetic = 0 AND analyzer = 'local-nlp' ORDER BY timestamp DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [r[0] for r in rows]
+
+
+def update_analysis(signal_id: str, analysis: dict) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE signals SET category = ?, tags = ?, severity = ?, confidence = ?, analyzer = ?, rationale = ?, "
+            "entities = ? WHERE id = ?",
+            (analysis["category"], json.dumps(analysis.get("tags") or []), round(float(analysis["severity"]), 2),
+             round(float(analysis["confidence"]), 2), analysis["analyzer"], analysis.get("rationale"),
+             json.dumps(analysis.get("entities") or {}, ensure_ascii=False), signal_id),
+        )
+
+
 def count_signals() -> int:
     with get_conn() as conn:
         return conn.execute("SELECT COUNT(*) FROM signals").fetchone()[0]
