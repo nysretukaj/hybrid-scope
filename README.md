@@ -79,12 +79,17 @@ The **exercise scenario** ("GRIDLOCK") uses real place names with **fictional** 
 It is labelled `EXERCISE SCENARIO` / `synthetic exercise source` in the UI. Live items always link to their original article.
 It is re-anchored to the current time on every API start, or with the **Reset scenario** button.
 
-## Optional: real LLM analysis (free)
-```powershell
-$env:LLM_BASE_URL = "https://api.groq.com/openai/v1"; $env:LLM_MODEL = "llama-3.1-8b-instant"; $env:LLM_API_KEY = "<key>"
-# or local: $env:LLM_BASE_URL = "http://localhost:11434/v1"; $env:LLM_MODEL = "qwen2.5:7b"
-$env:LLM_FOR_LIVE = "1"   # also analyse every live item with the LLM (watch rate limits)
-```
+## Real LLM analysis (free)
+1. Create a free key at https://console.groq.com/keys (or a Gemini key at https://aistudio.google.com/apikey).
+2. Copy `backend/.env.example` to `backend/.env` (git-ignored) and set `LLM_API_KEY=...`.
+3. Restart the API. The provider is detected from the key prefix, and models are picked from the provider's live model list. On Groq today these are `openai/gpt-oss-120b` for **Analyze Text** and `openai/gpt-oss-20b` for live signals.
+
+What happens then:
+- **Analyze Text** uses the LLM (~2–3 s) and shows the offline keyword-NLP result next to it as a baseline.
+- **Live signals** are stored instantly with local NLP, then upgraded by the LLM in the background. The header shows "AI upgrading signals n/N", paced at `LLM_RPM` (default 20/min). Rate limits (HTTP 429) pause and retry.
+- Any LLM failure falls back to local NLP, so the demo never breaks. `POST /api/llm/enrich?limit=60` backfills older live signals.
+
+Local alternative without a key: `LLM_BASE_URL=http://localhost:11434/v1` and `LLM_MODEL=qwen2.5:7b` (Ollama).
 Other settings: `LIVE_INGEST_INTERVAL_MIN` (auto-ingest), `LOOKBACK_HOURS`, `CLUSTER_GAP_HOURS`, `RECENCY_HALF_LIFE_HOURS`.
 
 ## Optional: push notifications

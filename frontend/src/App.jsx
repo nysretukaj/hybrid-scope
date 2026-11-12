@@ -47,11 +47,13 @@ export default function App() {
     }
   }, [filters])
 
+  const enriching = !!health?.llm?.enrich?.running
   useEffect(() => {
     refresh()
-    const id = setInterval(refresh, POLL_MS)
+    // poll faster while the LLM is upgrading live signals, so the board visibly updates
+    const id = setInterval(refresh, enriching ? 6000 : POLL_MS)
     return () => clearInterval(id)
-  }, [refresh])
+  }, [refresh, enriching])
 
   useEffect(() => {
     if (!selectedId) { setDetail(null); return }

@@ -80,6 +80,19 @@ export default function AnalyzePanel() {
               ))}
             </div>
             <p className="text-slate-300">{result.rationale}</p>
+            {result.baseline && (
+              <div className="rounded-lg bg-slate-950/60 p-3 text-xs ring-1 ring-slate-800">
+                <div className="mb-1.5 text-[10px] uppercase tracking-widest text-slate-500">{t('a.baseline')}</div>
+                <div className="flex flex-wrap items-center gap-3 text-slate-400">
+                  <CategoryBadge category={result.baseline.category} small />
+                  <span>{t('a.severity')} <span className="font-mono text-slate-300">{result.baseline.severity.toFixed(2)}</span></span>
+                  <span>{t('a.confidence')} <span className="font-mono text-slate-300">{pct(result.baseline.confidence)}</span></span>
+                  <span className={result.baseline.category === result.category ? 'text-emerald-400' : 'text-amber-300'}>
+                    {result.baseline.category === result.category ? `✓ ${t('a.agree')}` : `≠ ${t('a.disagree')}`}
+                  </span>
+                </div>
+              </div>
+            )}
             {result.keyword_scores && (
               <div className="space-y-1.5">
                 {CATEGORY_ORDER.map((c) => (
