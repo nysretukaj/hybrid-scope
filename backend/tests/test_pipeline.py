@@ -74,6 +74,26 @@ def test_seed_scenario_produces_hybrid_alerts(tmp_db):
     assert tokyo["level"] == "LOW"
 
 
+def test_live_news_never_merges_into_the_synthetic_scenario(tmp_db):
+    from app.analyzer.local import analyze_local
+    from app.correlation import build_alerts
+    from app.ingest.seed import load_seed
+    from app.normalize import build_signal, utcnow
+
+    load_seed()
+    title, text = "Protest in Pristina", "Police clashes during a protest in Pristina."
+    real = build_signal(source_name="Koha", source_type="news (sq)", reliability=0.75, title=title, text=text,
+                        url="https://example.org/real", timestamp=utcnow(), analysis=analyze_local(title, text))
+    tmp_db.insert_signals([real])
+
+    kosovo = [a for a in build_alerts(tmp_db.fetch_signals(), utcnow()) if a["zone"] == "Kosovo"]
+    assert len(kosovo) == 2
+    scenario = next(a for a in kosovo if a["synthetic"])
+    live = next(a for a in kosovo if not a["synthetic"])
+    assert all(s["synthetic"] for s in scenario["signals"]) and scenario["signal_count"] == 14
+    assert [s["id"] for s in live["signals"]] == [real["id"]]
+
+
 def test_breakdown_sums_to_score(tmp_db):
     from app.correlation import build_alerts
     from app.ingest.seed import load_seed
