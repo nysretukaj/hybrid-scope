@@ -26,12 +26,14 @@ def _hours(a: datetime, b: datetime) -> float:
 
 
 def cluster_signals(signals: list[dict]) -> list[tuple[str, list[dict]]]:
-    by_zone: dict[str, list[dict]] = defaultdict(list)
+    # Synthetic exercise signals and real live signals are never clustered together:
+    # real news must not appear as part of a fictional campaign (or vice versa).
+    by_zone: dict[tuple[str, bool], list[dict]] = defaultdict(list)
     for s in signals:
         if s["category"] in CATEGORY_LABELS and s.get("zone"):
-            by_zone[s["zone"]].append(s)
+            by_zone[(s["zone"], bool(s.get("synthetic")))].append(s)
     clusters = []
-    for zone, items in by_zone.items():
+    for (zone, _synthetic), items in by_zone.items():
         items.sort(key=lambda s: s["_ts"])
         current = [items[0]]
         for s in items[1:]:
