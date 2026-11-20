@@ -10,6 +10,7 @@ from typing import Literal, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -26,6 +27,8 @@ from .ingest.seed import reset_seed
 from .normalize import iso, parse_iso, utcnow
 from .i18n import norm_lang, source_label, zone_name
 from .localize import localize_alert, localize_signal
+from .ml import classifier, dataset, jobs, local_llm, ollama
+from .ml.images import ImageError, decode_upload, fetch as fetch_image, prepare as prepare_image
 from .snapshot import cache_key, export_snapshot, load_samples, load_snapshot, snapshot_info
 
 logging.basicConfig(level=logging.INFO)
@@ -63,10 +66,32 @@ def limit_analyze(request: Request) -> None:
 
 
 def start_enrichment(ids: list[str]) -> bool:
-    """Upgrade signals with the LLM in the background (keeps a reference so the task is not GC'd)."""
-    if not (config.llm_enabled() and config.LLM_FOR_LIVE and ids):
+    """Upgrade signals with an LLM in the background: the cloud LLM when configured, otherwise the
+    local one when LOCAL_LLM_FOR_LIVE=1 (keeps a reference so the task is not GC'd)."""
+    if not ids:
+        return False
+    if not (config.llm_enabled() and config.LLM_FOR_LIVE):
+        if config.LOCAL_LLM_FOR_LIVE and ollama.chat_model():
+            return jobs.start_label(ids[: config.LLM_MAX_PER_INGEST])
         return False
     task = asyncio.create_task(enrich.enrich_signals(ids))
+    STATE["tasks"].add(task)
+    task.add_done_callback(STATE["tasks"].discard)
+    return True
+
+
+def start_model_check(ids: list[str]) -> bool:
+    """A trained model on embeddings checks the new reports in the background (vectors are slow on a CPU)."""
+    if not ids or not classifier.uses_embeddings():
+        return False
+
+    async def run():
+        changed = await asyncio.to_thread(classifier.refine_stored, ids)
+        if changed:
+            invalidate_cache()
+        log.info("trained model corrected %s of %s new reports", changed, len(ids))
+
+    task = asyncio.create_task(run())
     STATE["tasks"].add(task)
     task.add_done_callback(STATE["tasks"].discard)
     return True
@@ -81,7 +106,9 @@ async def ingest_once() -> dict | None:
             return await _offline_ingest()
         report = await run_live_ingest()
         invalidate_cache()
-        report["llm_enrichment"] = start_enrichment(report.pop("new_ids", []))
+        new_ids = report.pop("new_ids", [])
+        report["model_check"] = start_model_check(new_ids)
+        report["llm_enrichment"] = start_enrichment(new_ids)
         alerts, _ = _alerts("all", config.NOTIFY_LANG)
         report["notified"] = await notify.notify_new(alerts)
         STATE["last_ingest"] = report
@@ -184,6 +211,9 @@ def invalidate_cache() -> None:
     _CACHE.clear()
 
 
+jobs.on_change(invalidate_cache)  # labelling and training jobs change what the pages show
+
+
 def _cached(key: tuple, compute):
     hit = _CACHE.get(key)
     if hit and time.monotonic() - hit[0] < CACHE_TTL_S:
@@ -284,6 +314,12 @@ def health():
             "last_error": LLM_STATUS["last_error"],
         },
         "notify_channels": notify.channels(),
+        "local_ai": {
+            "available": ollama.available(),
+            "chat_model": ollama.chat_model(),
+            "trained_model": bool(classifier.info()),
+            "job": jobs.STATE["job"] if jobs.STATE["running"] else None,
+        },
         "live_interval_min": config.LIVE_INGEST_INTERVAL_MIN,
         "signals": db.count_signals(),
         "ingest_running": STATE["ingest_running"],
@@ -550,21 +586,153 @@ class AnalyzeRequest(BaseModel):
     title: str = ""
     text: str = Field(min_length=3, max_length=8000)
     use_llm: bool = True
+    use_local: bool = True            # the local LLM (Ollama), when it is running
+    image_base64: Optional[str] = Field(default=None, max_length=8_000_000)  # a picture to analyse with the text
     lang: str = "en"
 
 
 @app.post("/api/analyze", dependencies=[Depends(limit_analyze)])
 def analyze_text(req: AnalyzeRequest):
+    image_b64 = preview = None
+    if req.image_base64:
+        try:
+            image_b64, preview = prepare_image(decode_upload(req.image_base64))
+        except ImageError as exc:
+            raise HTTPException(400, f"Image: {exc}") from exc
+    local_ready = bool(req.use_local and ollama.chat_model())
     key = cache_key(req.title, req.text)
-    cached = db.cache_get(key)  # identical text analysed before: instant, and spares the LLM quota
-    if cached:
+    cached = None if (image_b64 or local_ready) else db.cache_get(key)
+    if cached:  # identical text analysed before: instant, and spares the LLM quota
         return {**_localized_analysis(cached, req.lang), "cached": True}
-    if config.DEMO_OFFLINE:
-        return {**_localized_analysis(analyze(req.title, req.text, use_llm=False), req.lang), "offline": True}
-    result = analyze(req.title, req.text, use_llm=req.use_llm)
-    if result["analyzer"].startswith("llm:"):
+    use_cloud = req.use_llm and not config.DEMO_OFFLINE
+    result = analyze(req.title, req.text, use_llm=use_cloud, use_local_llm=local_ready, use_model=True,
+                     image_b64=image_b64 if local_ready else None)
+    if result["analyzer"].startswith("llm:") and not image_b64:
         db.cache_put(key, req.title, req.text, result, iso(utcnow()))  # replayable in the offline demo
-    return _localized_analysis(result, req.lang)
+    out = _localized_analysis(result, req.lang)
+    if config.DEMO_OFFLINE:
+        out["offline"] = True
+    if image_b64:
+        out["image_preview"] = preview
+        out["image_skipped"] = not local_ready  # only the local vision model can read pictures
+    return out
+
+
+# --- Local AI (Ollama + model trained on our data) --------------------------------------
+@app.get("/api/ml/status")
+def ml_status():
+    return {
+        "ollama": ollama.status(),
+        "classifier": classifier.info(),
+        "dataset": _cached(("ml-dataset",), dataset.stats),
+        "embeddings": db.count_embeddings(),
+        "job": jobs.status(),
+        "local_llm_for_live": config.LOCAL_LLM_FOR_LIVE,
+        "classifier_min_prob": config.CLASSIFIER_MIN_PROB,
+    }
+
+
+@app.post("/api/ml/train", dependencies=[Depends(require_admin)])
+def ml_train():
+    if not jobs.start_train():
+        raise HTTPException(409, "Another local-AI job is running")
+    return {"started": True}
+
+
+@app.post("/api/ml/label", dependencies=[Depends(require_admin)])
+def ml_label(limit: int = 20):
+    """Let the local LLM label reports that only the keyword rules have seen (new training data)."""
+    if not ollama.chat_model():
+        raise HTTPException(400, f"The local LLM is not available: start Ollama and run `ollama pull {config.OLLAMA_MODEL}`")
+    ids = db.fetch_unenriched_live(max(1, min(limit, 200)))
+    if not ids:
+        return {"started": False, "queued": 0}
+    if not jobs.start_label(ids):
+        raise HTTPException(409, "Another local-AI job is running")
+    return {"started": True, "queued": len(ids)}
+
+
+EXPORT_FILES = ("classification.jsonl", "sft_chat.jsonl", "verification.jsonl", "dataset_card.md")
+
+
+@app.post("/api/ml/export", dependencies=[Depends(require_admin)])
+async def ml_export():
+    return await asyncio.to_thread(dataset.export)
+
+
+@app.get("/api/ml/export/{name}", dependencies=[Depends(require_admin)])
+def ml_export_file(name: str):
+    if name not in EXPORT_FILES:
+        raise HTTPException(404, "Unknown file")
+    path = config.DATASET_DIR / name
+    if not path.exists():
+        raise HTTPException(404, "Export the dataset first")
+    return FileResponse(path, filename=f"hybridscope-{name}",
+                        media_type="text/markdown" if name.endswith(".md") else "application/jsonl")
+
+
+@app.post("/api/ml/create-model", dependencies=[Depends(require_admin)])
+async def ml_create_model():
+    """Build the 'hybridscope' model in Ollama: the base model + our instructions + labelled examples."""
+    if not ollama.available() or not ollama.has_model(config.OLLAMA_MODEL):
+        raise HTTPException(400, f"Base model missing: run `ollama pull {config.OLLAMA_MODEL}`")
+    from .analyzer.llm import SYSTEM_PROMPT
+
+    records = sorted((r for r in dataset.build() if r["weight"] > 0),
+                     key=lambda r: (-r["weight"], len(r["text"])))
+    examples, per_cat = [], Counter()
+    for r in records:  # two short examples per category, gold first
+        if per_cat[r["category"]] < 2 and len(r["text"]) <= 700:
+            per_cat[r["category"]] += 1
+            examples += [{"role": "user", "content": f"TITLE: {r['title']}\n\nTEXT: {r['text']}"},
+                         {"role": "assistant", "content": local_llm._example_answer(r)}]
+    try:
+        res = await asyncio.to_thread(ollama.create_model, config.OLLAMA_CUSTOM_MODEL, config.OLLAMA_MODEL,
+                                      SYSTEM_PROMPT, examples, {"temperature": 0, "num_ctx": 8192})
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, f"Ollama could not create the model: {exc}") from exc
+    return {"model": config.OLLAMA_CUSTOM_MODEL, "base": config.OLLAMA_MODEL, "examples": len(examples) // 2,
+            "status": res.get("status", "success")}
+
+
+_VERIFICATIONS: dict[tuple, dict] = {}
+
+
+@app.post("/api/alerts/{alert_id}/verify-ai", dependencies=[Depends(limit_analyze)])
+def verify_ai(alert_id: str, source: str = "all", lang: str = "en"):
+    """Second opinion from the local LLM: is this alert one coordinated hybrid campaign?"""
+    if not ollama.chat_model():
+        raise HTTPException(400, "The local LLM is not available")
+    alert = _find(alert_id, source, "en")  # the model reads the original texts; it answers in `lang`
+    key = (alert_id, alert["signal_count"], norm_lang(lang))
+    if key not in _VERIFICATIONS:
+        result = local_llm.verify_alert(alert, norm_lang(lang))
+        if not result:
+            raise HTTPException(503, "The local LLM did not answer, please try again")
+        _VERIFICATIONS[key] = {**result, "at": iso(utcnow())}
+    return _VERIFICATIONS[key]
+
+
+@app.post("/api/signals/{signal_id}/image", dependencies=[Depends(limit_analyze)])
+def analyze_signal_image(signal_id: str):
+    """Describe the picture of a report with the local vision model (only pictures collected from the feeds)."""
+    sig = db.fetch_signal(signal_id)
+    if not sig or not sig.get("image_url"):
+        raise HTTPException(404, "This report has no picture")
+    stored = db.image_analysis_get(sig["image_url"])
+    if stored:
+        return {**stored["result"], "preview": stored["preview"], "cached": True}
+    if not ollama.chat_model():
+        raise HTTPException(400, "The local LLM is not available")
+    try:
+        b64, preview = prepare_image(fetch_image(sig["image_url"]))
+    except (ImageError, Exception) as exc:  # noqa: BLE001 - network and format problems are reported, not raised
+        raise HTTPException(422, f"The picture could not be loaded: {exc}") from exc
+    result = local_llm.analyze_image(b64, sig["title"])
+    if not result:
+        raise HTTPException(503, "The local LLM did not answer, please try again")
+    db.image_analysis_put(sig["image_url"], result["model"], result, preview, iso(utcnow()))
+    return {**result, "preview": preview}
 
 
 @app.get("/api/analyze/samples")

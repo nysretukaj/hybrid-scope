@@ -137,5 +137,23 @@ NOTIFY_LANG = os.getenv("NOTIFY_LANG", "sq") if os.getenv("NOTIFY_LANG", "sq") i
 PUBLIC_URL = os.getenv("PUBLIC_URL", "").rstrip("/")
 
 
+# --- Local AI (Ollama) ----------------------------------------------------------
+# Runs on this computer, needs no API key and no internet. "auto" uses it whenever the Ollama
+# server answers; "0" switches it off (tests, public deployment), "1" expects it to be there.
+# 127.0.0.1, not "localhost": on Windows "localhost" tries IPv6 first and costs ~3 s per request
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
+OLLAMA_ENABLED = os.getenv("OLLAMA_ENABLED", "auto").strip().lower()
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:4b")            # reads text and images
+OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "bge-m3")   # multilingual text embeddings
+OLLAMA_CUSTOM_MODEL = os.getenv("OLLAMA_CUSTOM_MODEL", "hybridscope")  # built by POST /api/ml/create-model
+OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "240"))      # CPU-only machines are slow
+LOCAL_LLM_FOR_LIVE = os.getenv("LOCAL_LLM_FOR_LIVE", "0") == "1"  # label new live items with the local LLM
+MODELS_DIR = Path(os.getenv("HYBRIDSCOPE_MODELS_DIR", str(DATA_DIR / "models")))
+DATASET_DIR = Path(os.getenv("HYBRIDSCOPE_DATASET_DIR", str(DATA_DIR / "dataset")))
+CLASSIFIER_MIN_PROB = float(os.getenv("CLASSIFIER_MIN_PROB", "0.7"))  # trained model overrides the rules above this
+IMAGE_MAX_BYTES = 5 * 1024 * 1024
+IMAGE_MAX_SIDE = 1024
+
+
 def llm_enabled() -> bool:
     return bool(LLM_BASE_URL and (LLM_MODEL or LLM_API_KEY)) and not DEMO_OFFLINE

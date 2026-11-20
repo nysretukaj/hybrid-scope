@@ -85,6 +85,8 @@ T: dict[str, dict[str, str]] = {
     "nlp.lowered": {"en": " Severity lowered by: {kws} (likely non-hostile).",
                     "sq": " Rëndësia u ul nga: {kws} (ka gjasa të mos jetë armiqësor).",
                     "de": " Schwere gesenkt durch: {kws} (vermutlich nicht feindlich)."},
+    "nlp.model": {"en": " Trained model: {cat} ({p}% sure).", "sq": " Modeli i trajnuar: {cat} ({p}% i sigurt).",
+                  "de": " Trainiertes Modell: {cat} ({p}% sicher)."},
     "nlp.noloc": {"en": " No known location resolved.", "sq": " Nuk u gjet asnjë vendndodhje e njohur.",
                   "de": " Kein bekannter Ort ermittelt."},
 

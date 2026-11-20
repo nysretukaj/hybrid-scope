@@ -4,17 +4,20 @@ Failures of individual sources are reported, never fatal - the demo keeps workin
 """
 import asyncio
 import html
+import logging
 import re
 from datetime import datetime, timezone
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import feedparser
 import httpx
 
 from .. import config, db
 from ..analyzer import analyze
+from ..ml.images import clean_url, image_from_entry
 from ..normalize import build_signal, iso, make_id, utcnow
 
+log = logging.getLogger(__name__)
 _TAGS = re.compile(r"<[^>]+>")
 _WS = re.compile(r"\s+")
 
@@ -39,10 +42,12 @@ async def fetch_rss(client: httpx.AsyncClient, feed: dict) -> list[dict]:
         if not title:
             continue
         ts = _struct_to_dt(e.get("published_parsed") or e.get("updated_parsed")) or utcnow()
+        image = image_from_entry(e)  # relative image paths are resolved against the article link
         items.append({
             "source_name": feed["name"], "source_type": feed["type"], "reliability": feed["reliability"],
             "title": title, "text": summary[:1500] or title,
             "url": e.get("link"), "timestamp": ts,
+            "image_url": clean_url(urljoin(e.get("link") or feed["url"], image)) if image else None,
         })
     return items
 
@@ -70,7 +75,7 @@ async def fetch_gdelt(client: httpx.AsyncClient) -> list[dict]:
             "source_name": domain or "GDELT", "source_type": "news (GDELT)",
             "reliability": config.DOMAIN_RELIABILITY.get(domain, config.DEFAULT_RELIABILITY),
             "title": _clean(a.get("title", "")), "text": _clean(a.get("title", "")),
-            "url": a.get("url"), "timestamp": ts,
+            "url": a.get("url"), "timestamp": ts, "image_url": clean_url(a.get("socialimage")),
         })
     return items
 
@@ -103,15 +108,21 @@ async def fetch_cisa_kev(client: httpx.AsyncClient) -> list[dict]:
 
 
 def _analyze_all(raw: list[dict]) -> list[dict]:
-    """Fast local analysis only; the LLM upgrades new signals afterwards in the background (enrich.py)."""
-    out = []
-    for r in raw:
-        analysis = analyze(r["title"], r["text"], use_llm=False)
-        out.append(build_signal(
-            source_name=r["source_name"], source_type=r["source_type"], reliability=r["reliability"],
-            title=r["title"], text=r["text"], url=r["url"], timestamp=r["timestamp"], analysis=analysis,
-        ))
-    return out
+    """Fast local analysis only: keyword rules, corrected in one batch by the model trained on our data
+    when that model is fast (word features). A model on embeddings runs after storing, in the background
+    (main.ingest_once), and LLMs upgrade new signals afterwards (enrich.py, ml/jobs.py)."""
+    from ..ml import classifier
+
+    analyses = [analyze(r["title"], r["text"], use_llm=False) for r in raw]
+    try:
+        classifier.refine([(r["title"], r["text"]) for r in raw], analyses, allow_embeddings=False)
+    except Exception:  # noqa: BLE001 - the rules' result is always kept if the model fails
+        log.exception("trained model could not check the new reports")
+    return [build_signal(
+        source_name=r["source_name"], source_type=r["source_type"], reliability=r["reliability"],
+        title=r["title"], text=r["text"], url=r["url"], timestamp=r["timestamp"], analysis=a,
+        image_url=r.get("image_url"),
+    ) for r, a in zip(raw, analyses)]
 
 
 async def run_live_ingest() -> dict:

@@ -73,15 +73,21 @@ const ANALYZER_LABELS = {
   'claude-precomputed': { en: 'Claude (precomputed)', sq: 'Claude (i parallogaritur)', de: 'Claude (vorberechnet)' },
   'local-nlp': { en: 'Local NLP', sq: 'NLP lokal', de: 'Lokales NLP' },
   analyst: { en: 'Corrected by analyst', sq: 'Korrigjuar nga analisti', de: 'Vom Analysten korrigiert' },
+  'local-ml': { en: 'Trained model', sq: 'Modeli i trajnuar', de: 'Trainiertes Modell' },
 }
+const LOCAL_AI = { en: 'Local AI', sq: 'AI lokale', de: 'Lokale KI' }
 const CONNECTING = { en: 'connecting…', sq: 'po lidhet…', de: 'verbinde…' }
 const ANALYZER_CLS = {
   'claude-precomputed': 'text-violet-300 bg-violet-500/10 ring-violet-500/30',
   'local-nlp': 'text-slate-300 bg-slate-500/10 ring-slate-500/30',
   analyst: 'text-amber-200 bg-amber-500/10 ring-amber-500/30',
+  'local-ml': 'text-sky-200 bg-sky-500/10 ring-sky-500/30',
 }
 export const analyzer = (a) => {
   if (ANALYZER_LABELS[a]) return { label: ANALYZER_LABELS[a][LANG] || ANALYZER_LABELS[a].en, cls: ANALYZER_CLS[a] }
+  if (a?.startsWith('ollama:')) {
+    return { label: `${LOCAL_AI[LANG] || LOCAL_AI.en} · ${a.slice(7)}`, cls: 'text-teal-200 bg-teal-500/10 ring-teal-500/30' }
+  }
   const model = a?.startsWith('llm:') ? a.slice(4) : a
   return {
     label: `LLM · ${model === '(connecting)' ? CONNECTING[LANG] : model}`,

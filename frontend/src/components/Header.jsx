@@ -1,6 +1,6 @@
 import { LANGS, useI18n } from '../lib/i18n'
 
-const TABS = ['board', 'stats', 'signals', 'network', 'analyze']
+const TABS = ['board', 'stats', 'signals', 'network', 'analyze', 'model']
 
 function Logo() {
   return (
@@ -14,7 +14,7 @@ function Logo() {
   )
 }
 
-const NAV_ICON = { board: '🛡️', stats: '📊', network: '🕸️', signals: '📰', analyze: '🔍' }
+const NAV_ICON = { board: '🛡️', stats: '📊', network: '🕸️', signals: '📰', analyze: '🔍', model: '🧠' }
 
 /** Reopens the short "What is this page?" guide at any time. */
 function HowButton() {
@@ -47,7 +47,7 @@ function LangSwitch() {
 export function BottomNav({ view, setView }) {
   const { t } = useI18n()
   return (
-    <nav className="no-print fixed inset-x-0 bottom-0 z-[2000] grid grid-cols-5 border-t border-slate-800 bg-[#060a13]/95 backdrop-blur lg:hidden"
+    <nav className="no-print fixed inset-x-0 bottom-0 z-[2000] grid grid-cols-6 border-t border-slate-800 bg-[#060a13]/95 backdrop-blur lg:hidden"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       {TABS.map((key) => (
         <button key={key} onClick={() => { setView(key); window.scrollTo({ top: 0 }) }}

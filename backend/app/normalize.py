@@ -33,6 +33,7 @@ def build_signal(
     analysis: dict,
     synthetic: bool = False,
     signal_id: str | None = None,
+    image_url: str | None = None,
 ) -> dict:
     """Unified schema: source, timestamp, text, entities, geolocation + AI analysis."""
     loc = analysis.get("location") or {}
@@ -68,4 +69,5 @@ def build_signal(
         "target": analysis.get("target"),
         # fingerprint of the evidence exactly as collected, to show later that it was not altered
         "content_hash": hashlib.sha256(f"{title}\n{body}".encode("utf-8")).hexdigest(),
+        "image_url": image_url,
     }
