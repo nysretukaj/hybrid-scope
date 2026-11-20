@@ -189,8 +189,13 @@ def analyze_llm(title: str, text: str, purpose: str = "analyze") -> dict | None:
         return None
 
     STATUS["last_error"] = None
+    return normalize_analysis(data, f"llm:{model}")
+
+
+def normalize_analysis(data: dict, analyzer: str) -> dict:
+    """Validate an LLM's JSON answer (cloud or local) into the analysis schema; unknown values are dropped."""
     category = data.get("category") if data.get("category") in VALID else "other"
-    ents = data.get("entities") or {}
+    ents = data.get("entities") if isinstance(data.get("entities"), dict) else {}
     try:
         severity = max(0.0, min(1.0, float(data.get("severity", 0.3))))
         confidence = max(0.0, min(1.0, float(data.get("confidence", 0.5))))
@@ -200,6 +205,7 @@ def analyze_llm(title: str, text: str, purpose: str = "analyze") -> dict | None:
 
     sub = str(data.get("subcategory") or "").strip()
     target = str(data.get("target") or "").strip()[:80]
+    secondary = data.get("secondary_categories") if isinstance(data.get("secondary_categories"), list) else []
     return {
         "category": category,
         "subcategory": sub if sub in SUBCATEGORIES.get(category, {}) or (sub == "general" and category != "other") else None,
@@ -207,13 +213,13 @@ def analyze_llm(title: str, text: str, purpose: str = "analyze") -> dict | None:
         "claim": data.get("claim") if data.get("claim") in CLAIMS else None,
         "target": target or None,
         "country": str(data.get("country") or "").strip()[:60] or None,
-        "tags": [c for c in data.get("secondary_categories") or [] if c in VALID and c not in (category, "other")],
+        "tags": list(dict.fromkeys(c for c in secondary if c in VALID and c not in (category, "other"))),
         "severity": round(severity, 2),
         "confidence": round(confidence, 2),
-        "entities": {k: [str(x) for x in ents.get(k) or [] if str(x).strip()][:8]
+        "entities": {k: [str(x) for x in (ents.get(k) if isinstance(ents.get(k), list) else []) if str(x).strip()][:8]
                      for k in ("actors", "orgs", "technologies", "narratives")},
         "rationale": str(data.get("rationale", "")).strip()[:500],
         "i18n": {lang: {"rationale": str(data[f"rationale_{lang}"]).strip()[:500]}
                  for lang in ("sq", "de") if str(data.get(f"rationale_{lang}") or "").strip()},
-        "analyzer": f"llm:{model}",
+        "analyzer": analyzer,
     }

@@ -119,8 +119,34 @@ What happens then:
 - **Live signals** are stored instantly with local NLP, then upgraded by the LLM in the background. The header shows "AI upgrading signals n/N", paced at `LLM_RPM` (default 20/min). Rate limits (HTTP 429) pause and retry.
 - Any LLM failure falls back to local NLP, so the demo never breaks. `POST /api/llm/enrich?limit=60` backfills older live signals.
 
-Local alternative without a key: `LLM_BASE_URL=http://localhost:11434/v1` and `LLM_MODEL=qwen2.5:7b` (Ollama).
 Other settings: `LIVE_INGEST_INTERVAL_MIN` (auto-ingest), `LOOKBACK_HOURS`, `CLUSTER_GAP_HOURS`, `RECENCY_HALF_LIFE_HOURS`.
+
+## Local AI (Ollama) and a model trained on our own data
+
+Runs entirely on this computer: no API key, no internet, nothing leaves the machine (`backend/app/ml/`).
+
+```
+ollama pull gemma3:4b     # reads texts and pictures, understands Albanian, English and German
+ollama pull bge-m3        # multilingual text vectors
+```
+
+Architecture, from fastest to deepest:
+
+| Layer | What it does | Code |
+|---|---|---|
+| Keyword rules | always on, instant, explainable | `analyzer/local.py` |
+| **Trained model** | logistic regression on bge-m3 vectors, trained on our labelled reports (gold = analyst, silver = LLM / scenario; rule-only labels are excluded so it does not learn their mistakes). Measured on a held-out split against the rules; corrects them on new reports only when ≥70% sure | `ml/classifier.py`, `ml/dataset.py` |
+| **Local LLM** | gemma3:4b with a JSON schema; before each analysis the most similar verified reports are retrieved and shown as worked examples (retrieval-augmented, no GPU needed); reads the article's picture too | `ml/local_llm.py` |
+| Ensemble | rules, trained model, local and cloud LLM vote (weighted by confidence); disagreement lowers confidence; every vote is shown | `analyzer/__init__.py` |
+| Hybrid verification | the local LLM gives a second opinion on an alert: coordinated / possibly / not coordinated / not enough evidence, with reasons and what is missing | `ml/local_llm.py` |
+| Pictures | images from the feeds (RSS media, GDELT `socialimage`) are fetched safely (public hosts only, 5 MB, validated, resized) and described; visible signs of manipulation are listed, never claimed as proof | `ml/images.py` |
+
+The **AI model** page shows the engine, the dataset (by label quality and category), training with
+accuracy and macro-F1 next to the rules baseline, labelling more reports with the local LLM, dataset
+export (`classification.jsonl`, `sft_chat.jsonl`, `verification.jsonl`) and creating the `hybridscope`
+model in Ollama (base model + our instructions + labelled examples). Fine-tuning the weights with
+LoRA needs a GPU: see [`training/README.md`](training/README.md) for the Google Colab script.
+When Ollama is not running (e.g. on Render), everything else works as before.
 
 ## Public URL (Render, free)
 The repo contains a `Dockerfile` (it builds the dashboard and serves it with the API on one port) and a `render.yaml` blueprint.

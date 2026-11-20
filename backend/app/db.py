@@ -34,7 +34,21 @@ CREATE TABLE IF NOT EXISTS signals (
     claim TEXT,                         -- confirmed | alleged | opinion | reported
     target TEXT,
     content_hash TEXT,                  -- sha256 of title + text as collected
-    original_category TEXT              -- set when an analyst corrects the category
+    original_category TEXT,             -- set when an analyst corrects the category
+    image_url TEXT                      -- main picture of the article, when the feed has one
+);
+CREATE TABLE IF NOT EXISTS embeddings (
+    key TEXT PRIMARY KEY,               -- sha1(model + text)
+    model TEXT NOT NULL,
+    dim INTEGER NOT NULL,
+    vec BLOB NOT NULL                   -- float32 array
+);
+CREATE TABLE IF NOT EXISTS image_analysis (
+    image_url TEXT PRIMARY KEY,
+    model TEXT NOT NULL,
+    result TEXT NOT NULL,               -- JSON from the vision model
+    preview TEXT,                       -- small base64 JPEG, so the browser never loads third-party images
+    created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_signals_ts ON signals(timestamp);
 CREATE TABLE IF NOT EXISTS alert_feedback (
@@ -61,11 +75,11 @@ COLUMNS = [
     "id", "source_name", "source_type", "source_reliability", "url", "title", "text", "timestamp",
     "ingested_at", "zone", "country", "lat", "lon", "entities", "category", "tags", "severity",
     "confidence", "analyzer", "rationale", "synthetic", "i18n",
-    "subcategory", "cause", "claim", "target", "content_hash", "original_category",
+    "subcategory", "cause", "claim", "target", "content_hash", "original_category", "image_url",
 ]
 # columns added after the first release, created on start for older databases
 ADDED_COLUMNS = {"i18n": "TEXT NOT NULL DEFAULT '{}'", "subcategory": "TEXT", "cause": "TEXT", "claim": "TEXT",
-                 "target": "TEXT", "content_hash": "TEXT", "original_category": "TEXT"}
+                 "target": "TEXT", "content_hash": "TEXT", "original_category": "TEXT", "image_url": "TEXT"}
 
 VERIFICATION = ("unverified", "investigating", "partial", "confirmed", "disproved")
 _LEGACY_VERDICT = {"false_positive": "disproved"}
@@ -168,18 +182,21 @@ def fetch_by_ids(ids: list[str]) -> list[dict]:
 def fetch_unenriched_live(limit: int) -> list[str]:
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT id FROM signals WHERE synthetic = 0 AND analyzer = 'local-nlp' ORDER BY timestamp DESC LIMIT ?",
+            # local-ml = rules corrected by the trained classifier: still worth an LLM pass
+            "SELECT id FROM signals WHERE synthetic = 0 AND analyzer IN ('local-nlp', 'local-ml') "
+            "ORDER BY timestamp DESC LIMIT ?",
             (limit,),
         ).fetchall()
     return [r[0] for r in rows]
 
 
-def update_analysis(signal_id: str, analysis: dict) -> None:
-    """Store an LLM re-analysis. Signals an analyst has corrected by hand are never overwritten."""
+def update_analysis(signal_id: str, analysis: dict, only_if_analyzer: str | None = None) -> bool:
+    """Store a re-analysis. Signals an analyst has corrected by hand are never overwritten; with
+    only_if_analyzer the update happens only while the stored analyzer is still that one."""
     with get_conn() as conn:
         row = conn.execute("SELECT i18n, analyzer FROM signals WHERE id = ?", (signal_id,)).fetchone()
-        if row and row[1] == "analyst":
-            return
+        if not row or row[1] == "analyst" or (only_if_analyzer and row[1] != only_if_analyzer):
+            return False
         i18n = json.loads(row[0]) if row and row[0] else {}
         # the new rationale replaces the old one in every language; other translated fields are kept
         for lang in ("sq", "de"):
@@ -204,6 +221,7 @@ def update_analysis(signal_id: str, analysis: dict) -> None:
                 "UPDATE signals SET zone = ?, country = ?, lat = ?, lon = ? WHERE id = ? AND zone IS NULL",
                 (loc.get("zone"), loc.get("country"), loc.get("lat"), loc.get("lon"), signal_id),
             )
+    return True
 
 
 def set_classification(signal_id: str, category: str, subcategory: str | None) -> dict | None:
@@ -300,6 +318,55 @@ def upsert_signals(signals: list[dict]) -> int:
     with get_conn() as conn:
         conn.executemany(f"INSERT OR REPLACE INTO signals ({cols}) VALUES ({qs})", [_to_row(s) for s in signals])
     return len(signals)
+
+
+# --- Local AI: embeddings and image analyses -----------------------------------
+def embeddings_get(keys: list[str]) -> dict[str, bytes]:
+    found: dict[str, bytes] = {}
+    with get_conn() as conn:
+        for i in range(0, len(keys), 500):
+            chunk = keys[i:i + 500]
+            qs = ",".join("?" for _ in chunk)
+            found |= {r[0]: r[1] for r in conn.execute(f"SELECT key, vec FROM embeddings WHERE key IN ({qs})", chunk)}
+    return found
+
+
+def embeddings_put(rows: list[tuple[str, str, int, bytes]]) -> None:
+    if rows:
+        with get_conn() as conn:
+            conn.executemany("INSERT OR REPLACE INTO embeddings (key, model, dim, vec) VALUES (?, ?, ?, ?)", rows)
+
+
+def count_embeddings() -> int:
+    with get_conn() as conn:
+        return conn.execute("SELECT COUNT(*) FROM embeddings").fetchone()[0]
+
+
+def image_analysis_get(image_url: str) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute("SELECT model, result, preview, created_at FROM image_analysis WHERE image_url = ?",
+                           (image_url,)).fetchone()
+    return {"model": row[0], "result": json.loads(row[1]), "preview": row[2], "created_at": row[3]} if row else None
+
+
+def image_analysis_put(image_url: str, model: str, result: dict, preview: str | None, created_at: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO image_analysis (image_url, model, result, preview, created_at) VALUES (?, ?, ?, ?, ?)",
+            (image_url, model, json.dumps(result, ensure_ascii=False), preview, created_at),
+        )
+
+
+def image_analyses_by_url() -> dict[str, dict]:
+    with get_conn() as conn:
+        rows = conn.execute("SELECT image_url, model, result FROM image_analysis").fetchall()
+    return {r[0]: {"model": r[1], "result": json.loads(r[2])} for r in rows}
+
+
+def fetch_signal(signal_id: str) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM signals WHERE id = ?", (signal_id,)).fetchone()
+    return _from_row(row) if row else None
 
 
 # --- Notifications ----------------------------------------------------------

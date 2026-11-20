@@ -27,15 +27,55 @@ const SAMPLES = [
   },
 ]
 
-export default function AnalyzePanel() {
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+const VOTE_ICON = { rules: '📏', model: '🧠', local_llm: '💻', cloud_llm: '☁️' }
+
+/** Which analyzers voted for which category, and how much they agree. */
+function Votes({ result }) {
+  const { t } = useI18n()
+  if (!result.votes?.length) return null
+  return (
+    <div className="rounded-lg bg-slate-950/60 p-3 ring-1 ring-slate-800">
+      <div className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-widest text-slate-500">
+        {t('a.votes')}
+        <span className="ml-auto normal-case tracking-normal text-slate-400">{t('a.agreement', { n: Math.round((result.agreement || 0) * 100) })}</span>
+      </div>
+      <div className="space-y-1.5">
+        {result.votes.map((v) => (
+          <div key={v.source} className="flex items-center gap-2 text-xs">
+            <span className="w-40 text-slate-300">{VOTE_ICON[v.source]} {t(`a.vote.${v.source}`)}</span>
+            <CategoryBadge category={v.category} small />
+            <span className="font-mono text-slate-400">{pct(v.confidence)}</span>
+            {v.category === result.category ? <span className="text-emerald-400">✓</span> : <span className="text-amber-300">≠</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+export default function AnalyzePanel({ localAi }) {
   const { t, lang } = useI18n()
   const [samples, setSamples] = useState(SAMPLES)
   const [title, setTitle] = useState(SAMPLES[0].title)
   const [text, setText] = useState(SAMPLES[0].text)
+  const [image, setImage] = useState(null) // data URL of a picture to analyse with the text
+  const [useLocal, setUseLocal] = useState(true)
   const [result, setResult] = useState(null)
   const [lastRequest, setLastRequest] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const localReady = !!localAi?.available && !!localAi?.chat_model
+
+  const pickImage = (file) => {
+    setError(null)
+    if (!file) { setImage(null); return }
+    if (!file.type.startsWith('image/')) { setError(t('a.notImage')); return }
+    if (file.size > MAX_IMAGE_BYTES) { setError(t('a.imageTooBig')); return }
+    const reader = new FileReader()
+    reader.onload = () => setImage(String(reader.result))
+    reader.readAsDataURL(file)
+  }
 
   // Samples come from the backend so their AI answers can be cached for the offline demo.
   useEffect(() => {
@@ -53,11 +93,12 @@ export default function AnalyzePanel() {
       setBusy(false)
     }
   }
-  const run = () => request({ title, text })
+  const run = () => request({ title, text, use_local: useLocal && localReady, image_base64: image || undefined })
 
   // Switching language re-renders the last result in that language (served from the cache, no new AI call).
+  // A local-AI analysis is not repeated: on this computer it can take a minute.
   useEffect(() => {
-    if (lastRequest) request(lastRequest)
+    if (lastRequest && !lastRequest.use_local && !lastRequest.image_base64) request(lastRequest)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lang])
 
@@ -76,8 +117,28 @@ export default function AnalyzePanel() {
         </div>
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('a.titlePh')} className="mb-2 w-full rounded-lg bg-slate-950/70 px-3 py-2 text-sm ring-1 ring-slate-700 outline-none focus:ring-cyan-500/60" />
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={9} className="w-full rounded-lg bg-slate-950/70 px-3 py-2 text-sm leading-relaxed ring-1 ring-slate-700 outline-none focus:ring-cyan-500/60" />
+
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <label className={`flex cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5 text-xs ring-1 ${localReady ? 'text-slate-300 ring-slate-700 hover:bg-slate-800' : 'cursor-not-allowed text-slate-600 ring-slate-800'}`}
+            title={localReady ? '' : t('a.localOff')}>
+            🖼️ {image ? t('a.imageChange') : t('a.imageAdd')}
+            <input type="file" accept="image/*" className="hidden" disabled={!localReady} onChange={(e) => pickImage(e.target.files?.[0])} />
+          </label>
+          {image && (
+            <span className="flex items-center gap-2">
+              <img src={image} alt="" className="h-10 w-10 rounded object-cover ring-1 ring-slate-700" />
+              <button onClick={() => setImage(null)} className="text-xs text-slate-400 hover:text-slate-200">✕ {t('a.imageRemove')}</button>
+            </span>
+          )}
+          <label className={`flex items-center gap-2 text-xs ${localReady ? 'text-slate-300' : 'text-slate-600'}`}>
+            <input type="checkbox" checked={useLocal && localReady} disabled={!localReady} onChange={(e) => setUseLocal(e.target.checked)} className="accent-emerald-400" />
+            💻 {t('a.useLocal')}
+          </label>
+        </div>
+        {!localReady && <p className="mt-2 text-[11px] text-slate-500">{t('a.localOff')}</p>}
+
         <button onClick={run} disabled={busy || text.trim().length < 3} className="mt-3 rounded-lg bg-cyan-500/20 px-4 py-2 text-sm font-medium text-cyan-200 ring-1 ring-cyan-500/40 hover:bg-cyan-500/30 disabled:opacity-50">
-          {busy ? t('a.running') : t('a.run')}
+          {busy ? (useLocal && localReady ? t('a.runningLocal') : t('a.running')) : t('a.run')}
         </button>
         {error && <div className="mt-2 text-sm text-red-400">{error}</div>}
       </div>
@@ -118,6 +179,30 @@ export default function AnalyzePanel() {
               </div>
             )}
             <p className="text-slate-300">{result.rationale}</p>
+            {(result.image_preview || result.image_findings) && (
+              <div className="flex gap-3 rounded-lg bg-slate-950/60 p-3 ring-1 ring-slate-800">
+                {result.image_preview && <img src={`data:image/jpeg;base64,${result.image_preview}`} alt="" className="h-20 w-20 shrink-0 rounded object-cover" />}
+                <div className="text-xs">
+                  <div className="mb-1 text-[10px] uppercase tracking-widest text-slate-500">🖼️ {t('a.imageResult')}</div>
+                  <p className="text-slate-300">{result.image_skipped ? t('a.imageSkipped') : (result.image_findings || '—')}</p>
+                </div>
+              </div>
+            )}
+            <Votes result={result} />
+            {result.examples?.length > 0 && (
+              <div className="rounded-lg bg-slate-950/60 p-3 text-xs ring-1 ring-slate-800">
+                <div className="mb-1.5 text-[10px] uppercase tracking-widest text-slate-500">📚 {t('a.examples')}</div>
+                <ul className="space-y-1">
+                  {result.examples.map((ex) => (
+                    <li key={ex.title} className="flex items-center gap-2 text-slate-400">
+                      <CategoryBadge category={ex.category} small />
+                      <span className="truncate" title={ex.title}>{ex.title}</span>
+                      <span className="ml-auto font-mono text-slate-500">{Math.round(ex.similarity * 100)}%</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {result.baseline && (
               <div className="rounded-lg bg-slate-950/60 p-3 text-xs ring-1 ring-slate-800">
                 <div className="mb-1.5 text-[10px] uppercase tracking-widest text-slate-500">{t('a.baseline')}</div>

@@ -8,6 +8,7 @@ import { Onboarding, StatusBanner } from './components/StatusBanner'
 import KpiBar from './components/KpiBar'
 import NetworkGraph from './components/NetworkGraph'
 import SignalStream from './components/SignalStream'
+import ModelPanel from './components/ModelPanel'
 import StatsPanel from './components/StatsPanel'
 import ThreatMap from './components/ThreatMap'
 import { api } from './lib/api'
@@ -183,6 +184,7 @@ export default function App() {
               onReclassify={onReclassify}
               publicMode={!!health?.public_mode}
               aiEnabled={!!health?.llm_enabled && !health?.offline}
+              localAi={!!health?.local_ai?.chat_model}
             />
           </section>
         </main>
@@ -191,7 +193,8 @@ export default function App() {
       {view === 'signals' && <SignalStream source={filters.source} hours={filters.hours} alertsCount={data.total} refreshKey={tick} />}
       {view === 'stats' && <StatsPanel source={filters.source} hours={filters.hours} refreshKey={tick}
         setHours={(h) => setFilters((f) => ({ ...f, hours: h }))} />}
-      {view === 'analyze' && <AnalyzePanel />}
+      {view === 'analyze' && <AnalyzePanel localAi={health?.local_ai} />}
+      {view === 'model' && <ModelPanel publicMode={!!health?.public_mode} notify={notify} />}
 
       <BottomNav view={view} setView={setView} />
 

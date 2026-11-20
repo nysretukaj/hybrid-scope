@@ -47,4 +47,12 @@ export const api = {
   analyze: (body, lang) => post('/api/analyze', { ...body, lang }),
   samples: () => fetch('/api/analyze/samples').then(json),
   snapshot: () => post('/api/demo/snapshot'),
+  // local AI (Ollama + model trained on our data)
+  mlStatus: () => fetch('/api/ml/status').then(json),
+  mlTrain: () => post('/api/ml/train'),
+  mlLabel: (limit) => post(`/api/ml/label${qs({ limit })}`),
+  mlExport: () => post('/api/ml/export'),
+  mlCreateModel: () => post('/api/ml/create-model'),
+  verifyAi: (id, source, lang) => post(`/api/alerts/${id}/verify-ai${qs({ source, lang })}`),
+  signalImage: (id) => post(`/api/signals/${id}/image`),
 }

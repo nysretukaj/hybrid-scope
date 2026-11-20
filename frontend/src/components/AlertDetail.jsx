@@ -268,7 +268,88 @@ function EvidenceFacts({ signal }) {
   )
 }
 
-function Evidence({ signal, active, links, canEdit, onReclassify }) {
+/** The article's picture, described by the local vision model. The server fetches the image and sends
+ *  back a small preview, so the browser never loads third-party pictures. */
+function EvidenceImage({ signal, localAi }) {
+  const { t } = useI18n()
+  const [state, setState] = useState({ status: 'idle' })
+  if (!signal.image_url) return null
+  const run = () => {
+    setState({ status: 'loading' })
+    api.signalImage(signal.id)
+      .then((r) => setState({ status: 'done', r }))
+      .catch((e) => setState({ status: 'error', msg: e.message }))
+  }
+  if (state.status === 'idle') {
+    return localAi ? (
+      <button onClick={run} className="mt-2 text-[11px] text-teal-300 hover:text-teal-200">🖼️ {t('ev.imageAnalyze')}</button>
+    ) : null
+  }
+  if (state.status === 'loading') return <div className="mt-2 text-[11px] text-slate-400">🖼️ {t('ev.imageLoading')}</div>
+  if (state.status === 'error') return <div className="mt-2 text-[11px] text-amber-300/80">🖼️ {state.msg}</div>
+  const r = state.r
+  return (
+    <div className="mt-2 flex gap-3 rounded-lg bg-slate-950/60 p-2.5 ring-1 ring-slate-800">
+      {r.preview && <img src={`data:image/jpeg;base64,${r.preview}`} alt="" className="h-20 w-24 shrink-0 rounded object-cover" />}
+      <div className="min-w-0 text-xs">
+        <p className="text-slate-200">{r.description}</p>
+        {r.visible_text && <p className="mt-1 text-slate-400">“{r.visible_text}”</p>}
+        <div className="mt-1 flex flex-wrap gap-2 text-[10px]">
+          <span className={r.threat_relevant ? 'text-amber-300' : 'text-slate-500'}>{r.threat_relevant ? t('ev.imageRelevant') : t('ev.imageNotRelevant')}</span>
+          {r.signs_of_manipulation?.length > 0 && <span className="text-orange-300">⚠ {t('ev.imageSigns')}: {r.signs_of_manipulation.join('; ')}</span>}
+        </div>
+        <p className="mt-1 text-[10px] text-slate-600">{t('ev.imageNote')}</p>
+      </div>
+    </div>
+  )
+}
+
+const VERDICT_COLOR = { coordinated: '#f87171', possibly_coordinated: '#f59e0b', not_coordinated: '#34d399', insufficient_evidence: '#94a3b8' }
+
+/** Second opinion from the local LLM: is this one coordinated hybrid campaign? */
+function LocalVerification({ alert, source }) {
+  const { t, lang } = useI18n()
+  const [state, setState] = useState({ status: 'idle' })
+  const run = () => {
+    setState({ status: 'loading' })
+    api.verifyAi(alert.id, source, lang)
+      .then((r) => setState({ status: 'done', r }))
+      .catch((e) => setState({ status: 'error', msg: e.message }))
+  }
+  if (state.status === 'idle') {
+    return (
+      <button onClick={run} className="mt-3 w-full rounded-lg bg-teal-500/10 px-3 py-2 text-left text-sm text-teal-100 ring-1 ring-teal-500/30 hover:bg-teal-500/20">
+        💻 {t('lv2.btn')}
+        <span className="block text-[11px] text-slate-400">{t('lv2.sub')}</span>
+      </button>
+    )
+  }
+  if (state.status === 'loading') return <div className="mt-3 rounded-lg px-3 py-2 text-sm text-slate-400 ring-1 ring-slate-800">⏳ {t('lv2.loading')}</div>
+  if (state.status === 'error') return <div className="mt-3 rounded-lg px-3 py-2 text-sm text-amber-300 ring-1 ring-amber-500/30">⚠ {state.msg}</div>
+  const r = state.r
+  const color = VERDICT_COLOR[r.verdict]
+  return (
+    <div className="mt-3 rounded-lg p-3 ring-1" style={{ background: `${color}12`, '--tw-ring-color': `${color}55` }}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] uppercase tracking-widest text-slate-400">💻 {t('lv2.title')}</span>
+        <span className="rounded-full px-2 py-0.5 text-xs font-semibold text-slate-950" style={{ background: color }}>{t(`lv2.v.${r.verdict}`)}</span>
+        <span className="text-xs text-slate-400">{t('d.confidence')} {pct(r.confidence)}</span>
+      </div>
+      {r.summary && <p className="mt-2 text-sm text-slate-200">{r.summary}</p>}
+      {r.reasons?.length > 0 && (
+        <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-slate-300">{r.reasons.map((x) => <li key={x}>{x}</li>)}</ul>
+      )}
+      {r.missing_evidence?.length > 0 && (
+        <div className="mt-2 text-xs text-slate-400">
+          <span className="font-medium">{t('lv2.missing')}:</span> {r.missing_evidence.join('; ')}
+        </div>
+      )}
+      <p className="mt-2 text-[10px] text-slate-600">{t('lv2.note', { m: r.model, s: r.seconds })}</p>
+    </div>
+  )
+}
+
+function Evidence({ signal, active, links, canEdit, onReclassify, localAi }) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -285,6 +366,7 @@ function Evidence({ signal, active, links, canEdit, onReclassify }) {
       <div className="mt-1.5 text-sm font-medium text-slate-100">{signal.title}</div>
       <p className="mt-1 text-[13px] leading-relaxed text-slate-400">{signal.text}</p>
       <EvidenceFacts signal={signal} />
+      <EvidenceImage signal={signal} localAi={localAi} />
       {signal.analyzer === 'analyst' && signal.original_category && (
         <div className="mt-1 text-[11px] text-amber-300/80">✎ {t('ev.fixed', { c: t(`cat.${signal.original_category}`) })}</div>
       )}
@@ -341,7 +423,7 @@ function Evidence({ signal, active, links, canEdit, onReclassify }) {
   )
 }
 
-export default function AlertDetail({ alert, loading, source, notifyEnabled, onFeedback, onNotify, onReclassify, publicMode, aiEnabled }) {
+export default function AlertDetail({ alert, loading, source, notifyEnabled, onFeedback, onNotify, onReclassify, publicMode, aiEnabled, localAi }) {
   const { t } = useI18n()
   const [showTech, setTechOpen] = useState(false)
   const [activeSignal, setActiveSignal] = useState(null)
@@ -390,6 +472,7 @@ export default function AlertDetail({ alert, loading, source, notifyEnabled, onF
       </div>
 
       <PlainSummary alert={alert} source={source} aiEnabled={aiEnabled} />
+      {localAi && <LocalVerification alert={alert} source={source} />}
 
       <Assessment alert={alert} />
 
@@ -434,7 +517,7 @@ export default function AlertDetail({ alert, loading, source, notifyEnabled, onF
         <div className="space-y-2">
           {[...alert.signals].reverse().map((s) => (
             <Evidence key={s.id} signal={s} active={s.id === activeSignal} links={alert.links}
-              canEdit={!publicMode} onReclassify={onReclassify} />
+              canEdit={!publicMode} onReclassify={onReclassify} localAi={localAi} />
           ))}
         </div>
       </div>
