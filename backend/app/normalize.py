@@ -37,14 +37,16 @@ def build_signal(
     """Unified schema: source, timestamp, text, entities, geolocation + AI analysis."""
     loc = analysis.get("location") or {}
     now = utcnow()
+    title = (title or "").strip()[:300]
+    body = (text or title or "").strip()[:2000]
     return {
         "id": signal_id or make_id(url, source_name, title),
         "source_name": source_name,
         "source_type": source_type,
         "source_reliability": round(float(reliability), 2),
         "url": url,
-        "title": (title or "").strip()[:300],
-        "text": (text or title or "").strip()[:2000],
+        "title": title,
+        "text": body,
         "timestamp": iso(min(timestamp, now)),
         "ingested_at": iso(now),
         "zone": loc.get("zone"),
@@ -60,4 +62,10 @@ def build_signal(
         "rationale": analysis.get("rationale"),
         "synthetic": synthetic,
         "i18n": analysis.get("i18n") or {},
+        "subcategory": analysis.get("subcategory"),
+        "cause": analysis.get("cause"),
+        "claim": analysis.get("claim"),
+        "target": analysis.get("target"),
+        # fingerprint of the evidence exactly as collected, to show later that it was not altered
+        "content_hash": hashlib.sha256(f"{title}\n{body}".encode("utf-8")).hexdigest(),
     }

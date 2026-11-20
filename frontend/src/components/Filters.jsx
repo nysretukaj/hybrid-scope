@@ -3,6 +3,9 @@ import { CATEGORY_ORDER, cat } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 import { Help } from './ui'
 
+// 0 = the whole look-back window (10 days)
+const TIME_WINDOWS = [24, 72, 168, 0]
+
 export default function Filters({ filters, setFilters, zones }) {
   const { t } = useI18n()
   const [showMore, setMoreOpen] = useState(false)
@@ -12,6 +15,17 @@ export default function Filters({ filters, setFilters, zones }) {
     .filter(Boolean).length
   return (
     <div className="panel space-y-3 p-3">
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] text-slate-500">🕒 {t('f.time')}</span>
+        <div className="flex flex-1 rounded-lg bg-slate-950/70 p-0.5 ring-1 ring-slate-700" role="group" aria-label={t('f.time')}>
+          {TIME_WINDOWS.map((h) => (
+            <button key={h} onClick={() => set('hours', h)} aria-pressed={filters.hours === h}
+              className={`flex-1 rounded-md px-1 py-1 text-[11px] ${filters.hours === h ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'}`}>
+              {t(`time.${h}`)}
+            </button>
+          ))}
+        </div>
+      </div>
       <input
         value={filters.q}
         onChange={(e) => set('q', e.target.value)}

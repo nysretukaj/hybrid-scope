@@ -77,7 +77,18 @@ RSS_FEEDS = [
     {"name": "heise Security", "url": "https://www.heise.de/security/rss/news-atom.xml", "type": "news (de)", "reliability": 0.85},
     {"name": "tagesschau", "url": "https://www.tagesschau.de/xml/rss2/", "type": "news (de)", "reliability": 0.85},
     {"name": "DW Deutsch", "url": "https://rss.dw.com/xml/rss-de-all", "type": "news (de)", "reliability": 0.85},
+    # Government and international organisations
+    {"name": "NCSC UK", "url": "https://www.ncsc.gov.uk/api/1/services/v1/all-rss-feed.xml", "type": "official", "reliability": 0.9},
+    {"name": "UN News (Europe)", "url": "https://news.un.org/feed/subscribe/en/news/region/europe/feed/rss.xml",
+     "type": "official", "reliability": 0.85},
+    # Public social media: low reliability, used as early indicators, never as confirmation
+    {"name": "Mastodon #disinformation", "url": "https://mastodon.social/tags/disinformation.rss", "type": "social",
+     "reliability": 0.4},
 ]
+
+# Public incident database: vulnerabilities CISA has seen exploited in real attacks.
+CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+CISA_KEV_DAYS = 10   # only entries added in the last N days
 
 GDELT_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
 GDELT_QUERY = (

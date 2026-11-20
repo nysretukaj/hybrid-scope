@@ -6,14 +6,18 @@ handles more reliably than an LLM.
 """
 import re
 
+from ..assess import classify_extra
 from ..gazetteer import find_places, primary_place
 from ..localize import nlp_rationale
 
+# "physical" is the Security category (border, terrorism, organised crime, unrest, military, sabotage);
+# the key stays "physical" so stored data and saved snapshots keep working.
 CATEGORY_LABELS = {
     "disinformation": "Disinformation",
+    "political": "Political",
     "cyber": "Cyber",
     "infrastructure": "Infrastructure",
-    "physical": "Physical / Geopolitical",
+    "physical": "Security",
 }
 
 KEYWORDS: dict[str, dict[str, int]] = {
@@ -25,7 +29,19 @@ KEYWORDS: dict[str, dict[str, int]] = {
         "cve-": 3, "flaw": 2, "flaws": 2, "attacker": 2, "attackers": 2, "malicious": 2,
         "persistent access": 2, "compromised": 2, "botnet": 2, "credential": 2, "leak site": 3, "stolen data": 2, "threat actor": 2,
         "authentication bypass": 3, "remote code execution": 3, "infostealer": 3, "access broker": 3,
+        "espionage": 3, "cyber espionage": 3, "unauthorized access": 3, "unauthorised access": 3,
+        "data leak": 3, "leaked data": 2,
         "patch": 1, "scada": 1, "encrypted": 1,
+    },
+    # Interference with politics by foreign or hostile actors. Ordinary political debate, criticism or
+    # diplomatic disagreement has no indicator here, so it stays "other".
+    "political": {
+        "foreign interference": 3, "election interference": 3, "electoral interference": 3, "meddling": 3,
+        "vote buying": 3, "vote-buying": 3, "electoral fraud": 3, "election fraud": 3, "coup": 3,
+        "destabiliz": 3, "destabilis": 3, "coercion": 3, "coerce": 2, "blackmail": 2, "ultimatum": 2,
+        "diplomatic pressure": 3, "economic pressure": 2, "political pressure": 2, "foreign agent": 2,
+        "covert funding": 3, "illegal funding": 2, "puppet government": 3, "undermine democracy": 3,
+        "secession": 2, "separatist": 2, "annex": 2, "sanctions": 1, "diplomat": 1,
     },
     "disinformation": {
         "disinformation": 3, "misinformation": 2, "propaganda": 3, "fake news": 3, "deepfake": 3,
@@ -47,6 +63,8 @@ KEYWORDS: dict[str, dict[str, int]] = {
         "navy": 2, "coast guard": 2, "jamming": 3, "gps interference": 3, "incursion": 3, "airspace": 2,
         "armed": 2, "border": 1, "mobilisation": 2, "mobilization": 2, "evacuation": 2, "anchor": 2,
         "assassination": 3, "shooting": 3, "bomb": 3,
+        "terror": 3, "extremist": 2, "hostage": 3, "organized crime": 3, "organised crime": 3,
+        "trafficking": 2, "smuggling": 2, "cartel": 2, "border incident": 3, "illegal crossing": 2,
     },
 }
 
@@ -83,10 +101,20 @@ KEYWORDS_I18N: dict[str, dict[str, int]] = {
     "physical": {
         # sq
         "dron": 3, "sabotim": 3, "trazira": 3, "shpërthim": 3, "ushtri": 2, "ushtarak": 2, "raket": 3,
-        "evakuim": 2, "përleshje": 3, "sulm i armatosur": 3,
+        "evakuim": 2, "përleshje": 3, "sulm i armatosur": 3, "krim i organizuar": 3, "trafikim": 2,
+        "kontraband": 2, "incident kufitar": 3,
         # de
         "drohne": 3, "anschlag": 3, "militär": 2, "rakete": 3, "bundeswehr": 2, "spionage": 2,
         "evakuierung": 2, "störsender": 3, "gps-störung": 3, "demonstration": 1,
+        "organisierte kriminalität": 3, "menschenhandel": 2, "schleus": 2, "geisel": 3,
+    },
+    "political": {
+        # sq
+        "ndërhyrje e huaj": 3, "ndërhyrje në zgjedhje": 3, "presion diplomatik": 3, "destabiliz": 3,
+        "grusht shteti": 3, "blerje votash": 3, "manipulim zgjedhor": 3, "sanksione": 1,
+        # de
+        "einmischung": 3, "wahlbeeinflussung": 3, "wahlmanipulation": 3, "destabilisier": 3, "putsch": 3,
+        "erpressung": 2, "diplomatischer druck": 3, "stimmenkauf": 3, "sanktionen": 1,
     },
 }
 for _cat, _kws in KEYWORDS_I18N.items():
@@ -230,6 +258,7 @@ def analyze_local(title: str, text: str) -> dict:
         "tags": tags,
         "severity": round(severity, 2),
         "confidence": round(confidence, 2),
+        **classify_extra(category, title, text),
         "entities": entities,
         "location": location,
         "rationale": nlp_rationale(findings, "en"),

@@ -33,13 +33,15 @@ async def fetch_rss(client: httpx.AsyncClient, feed: dict) -> list[dict]:
     parsed = feedparser.parse(resp.content)
     items = []
     for e in parsed.entries[:40]:
-        title = _clean(e.get("title", ""))
+        summary = _clean(e.get("summary") or e.get("description") or "")
+        # social posts (e.g. Mastodon) have no title: use the start of the post
+        title = _clean(e.get("title", "")) or (summary[:140].rsplit(" ", 1)[0] + "…" if len(summary) > 140 else summary)
         if not title:
             continue
         ts = _struct_to_dt(e.get("published_parsed") or e.get("updated_parsed")) or utcnow()
         items.append({
             "source_name": feed["name"], "source_type": feed["type"], "reliability": feed["reliability"],
-            "title": title, "text": _clean(e.get("summary") or e.get("description") or "")[:1500] or title,
+            "title": title, "text": summary[:1500] or title,
             "url": e.get("link"), "timestamp": ts,
         })
     return items
@@ -73,6 +75,33 @@ async def fetch_gdelt(client: httpx.AsyncClient) -> list[dict]:
     return items
 
 
+async def fetch_cisa_kev(client: httpx.AsyncClient) -> list[dict]:
+    """CISA Known Exploited Vulnerabilities: confirmed exploitation in the wild (an incident database)."""
+    resp = await client.get(config.CISA_KEV_URL)
+    resp.raise_for_status()
+    cutoff = utcnow().date().toordinal() - config.CISA_KEV_DAYS
+    items = []
+    for v in resp.json().get("vulnerabilities", []):
+        try:
+            added = datetime.strptime(v["dateAdded"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except (KeyError, ValueError):
+            continue
+        if added.date().toordinal() < cutoff:
+            continue
+        cve = v.get("cveID", "")
+        ransomware = str(v.get("knownRansomwareCampaignUse", "")).lower() == "known"
+        title = f"{cve} in {v.get('vendorProject', '')} {v.get('product', '')} is being actively exploited".strip()
+        text = (f"CISA confirmed active exploitation of {cve} ({v.get('vulnerabilityName', '')}). "
+                f"{v.get('shortDescription', '')} Required action: {v.get('requiredAction', '')}"
+                + (" The vulnerability is known to be used in ransomware campaigns." if ransomware else ""))
+        items.append({
+            "source_name": "CISA KEV", "source_type": "advisory", "reliability": 0.95,
+            "title": title, "text": _clean(text),
+            "url": f"https://nvd.nist.gov/vuln/detail/{cve}" if cve else None, "timestamp": added,
+        })
+    return items
+
+
 def _analyze_all(raw: list[dict]) -> list[dict]:
     """Fast local analysis only; the LLM upgrades new signals afterwards in the background (enrich.py)."""
     out = []
@@ -87,9 +116,9 @@ def _analyze_all(raw: list[dict]) -> list[dict]:
 
 async def run_live_ingest() -> dict:
     started = utcnow()
-    names = [f["name"] for f in config.RSS_FEEDS] + ["GDELT"]
+    names = [f["name"] for f in config.RSS_FEEDS] + ["GDELT", "CISA KEV"]
     async with httpx.AsyncClient(timeout=config.HTTP_TIMEOUT, headers={"User-Agent": config.USER_AGENT}) as client:
-        tasks = [fetch_rss(client, f) for f in config.RSS_FEEDS] + [fetch_gdelt(client)]
+        tasks = [fetch_rss(client, f) for f in config.RSS_FEEDS] + [fetch_gdelt(client), fetch_cisa_kev(client)]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
     raw, report = [], []

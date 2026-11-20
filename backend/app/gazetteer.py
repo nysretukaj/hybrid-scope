@@ -196,6 +196,24 @@ def find_places(text: str) -> list[dict]:
     return list(found.values())
 
 
+_PRECISION = {(round(lat, 4), round(lon, 4)): spec for _n, _z, _c, lat, lon, spec in PLACES}
+
+
+def precision_at(lat: float | None, lon: float | None) -> int | None:
+    """2 = city / sea area, 1 = country centroid (approximate), None = unknown coordinates."""
+    if lat is None or lon is None:
+        return None
+    return _PRECISION.get((round(lat, 4), round(lon, 4)))
+
+
+def resolve(name: str | None) -> dict | None:
+    """Look up one place name (e.g. a country an LLM extracted) in the gazetteer."""
+    if not name:
+        return None
+    place = _INDEX.get(name.strip())
+    return {k: v for k, v in place.items()} if place else None
+
+
 def primary_place(places: list[dict]) -> dict | None:
     """Most specific place wins; ties go to the earliest mention."""
     if not places:

@@ -13,12 +13,13 @@ from statistics import mean
 
 from . import scoring
 from .analyzer.local import CATEGORY_LABELS
+from .assess import assess_alert, independent, mark_duplicates, signal_view
 from .config import CLUSTER_GAP_HOURS, CROSS_CATEGORY_LINK_HOURS
 from .localize import alert_texts, link_reason
 from .normalize import iso, parse_iso
 from .ttp import map_ttps
 
-CATEGORY_ORDER = ["disinformation", "cyber", "infrastructure", "physical"]
+CATEGORY_ORDER = ["disinformation", "political", "cyber", "infrastructure", "physical"]
 LINK_TYPES = {"actors": "actor", "orgs": "organisation", "technologies": "technology", "cves": "CVE", "narratives": "narrative"}
 
 
@@ -125,18 +126,23 @@ def make_alert(zone: str, sigs: list[dict], now: datetime) -> dict:
     cross_domain = any(by_id[l["source"]]["category"] != by_id[l["target"]]["category"] for l in links)
     is_hybrid = len(categories) >= 2 and cross_domain
 
+    # copies of the same story (syndication) do not count as independent confirmation
     entity_linked = {sid for l in links if l["kind"] == "entity" for sid in (l["source"], l["target"])}
-    corroborating = len({s["source_name"] for s in sigs if s["id"] in entity_linked}) or 1
+    corroborating = len({s["source_name"] for s in independent(sigs) if s["id"] in entity_linked}) or 1
 
     score, breakdown = scoring.score_alert(sigs, categories, is_hybrid, corroborating, now)
-    confidence = scoring.alert_confidence(sigs)
+    confidence = scoring.alert_confidence(independent(sigs) or sigs)
     level = scoring.level_for(score)
+    severity_value = next(b["value"] for b in breakdown if b["key"] == "severity")
+    assessment = assess_alert(sigs, level, confidence, severity_value, now)
 
     first, last = sigs[0]["_ts"], sigs[-1]["_ts"]
     top = max(sigs, key=lambda s: s["score"])
     sources = sorted({s["source_name"] for s in sigs})
     coords = [(s["lat"], s["lon"]) for s in sigs if s.get("lat") is not None]
     centroid = {"lat": round(mean(c[0] for c in coords), 4), "lon": round(mean(c[1] for c in coords), 4)} if coords else None
+    # "city" when at least one report names a city or sea area; "country" = only the country is known
+    geo_precision = None if not coords else "city" if any(s.get("geo_precision") == "city" for s in sigs) else "country"
 
     sequence = []
     for c in categories:
@@ -176,6 +182,8 @@ def make_alert(zone: str, sigs: list[dict], now: datetime) -> dict:
         "sources": sources,
         "synthetic": all(s["synthetic"] for s in sigs),
         "centroid": centroid,
+        "geo_precision": geo_precision,
+        "assessment": assessment,
         "breakdown": breakdown,
         "sequence": sequence,
         "shared_entities": shared,
@@ -229,7 +237,10 @@ def replay(alert: dict) -> dict:
 
 
 def build_alerts(signals: list[dict], now: datetime) -> list[dict]:
-    prepared = [{**s, "_ts": parse_iso(s["timestamp"])} for s in signals]
+    prepared = [{**(s if "severity_level" in s else signal_view(s, now)), "_ts": parse_iso(s["timestamp"])}
+                for s in signals]
+    if any("duplicate_of" not in s for s in prepared):
+        mark_duplicates(prepared)
     alerts = [make_alert(zone, sigs, now) for zone, sigs in cluster_signals(prepared)]
     alerts.sort(key=lambda a: a["score"], reverse=True)
     return alerts

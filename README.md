@@ -30,9 +30,30 @@ Tests: `cd backend; .\.venv\Scripts\python -m pytest -q`
 ## How it works
 
 **1. Ingestion & normalization** (`backend/app/ingest/`)
-Live sources: The Record, SANS ISC, BleepingComputer, The Hacker News, Krebs on Security, EUvsDisinfo, Balkan Insight, and the GDELT DOC API.
-Every item is normalized to one schema: `source, type, reliability, timestamp, title, text, url, zone, country, lat/lon, entities, category, tags, severity, confidence, analyzer, rationale`.
+Live sources: The Record, SANS ISC, BleepingComputer, The Hacker News, Krebs on Security, EUvsDisinfo, Balkan Insight, the GDELT DOC API,
+official and international sources (NCSC UK, UN News Europe), a public incident database (CISA Known Exploited Vulnerabilities)
+and public social media (Mastodon #disinformation, low reliability: an early indicator, never a confirmation).
+Every item is normalized to one schema: `source, type, reliability, timestamp (published), ingested_at (collected), title, text, url, zone, country, lat/lon, entities, category, subcategory, tags, severity, confidence, cause, claim, target, analyzer, rationale, content_hash`.
+`content_hash` is a SHA-256 of the text exactly as collected; each report also links to its Wayback Machine archive.
 A source that fails is reported and the rest of the run continues.
+
+**Classification** (`backend/app/assess.py`, `backend/app/analyzer/`). Five categories, each with subcategories:
+
+| Category | Subcategories |
+|---|---|
+| Cyber | ransomware, DDoS, data breach, phishing, espionage, unauthorised access, vulnerability, malware |
+| Disinformation | fake news, manipulated image/video, bots, impersonation, coordinated campaign, propaganda |
+| Political | foreign interference, election interference, coercion, destabilisation (ordinary political debate is *not* a threat) |
+| Infrastructure | energy, water, transport, telecom, industrial control systems |
+| Security (`physical`) | terrorism, organised crime, border, military, sabotage, unrest, violent incident |
+
+Each report also gets a **cause** (deliberate / accidental / natural / unknown; for disinformation this separates
+disinformation from misinformation, and "unknown" is the default: no intent is assumed without evidence), a **claim**
+type (officially confirmed / allegation / opinion / reported), a **target** when the text names one, a separate
+severity band and confidence band, the **location precision** (city or only the country, shown dashed on the map),
+an **old news** flag and **near-duplicate** detection (syndicated copies are shown but not counted as independent sources).
+Analysts can **correct a category** by hand (the automatic one is kept), and set an alert's **verification status**:
+not checked → being checked → partly confirmed → confirmed / disproved.
 
 **2. AI analysis layer** (`backend/app/analyzer/`). Pluggable providers:
 | Provider | When | Notes |
@@ -61,6 +82,15 @@ Locations and CVEs always come from deterministic extraction, which is more reli
 Confidence is a noisy-OR over independent sources: each extra corroborating source raises it.
 Levels: CRITICAL ≥ 75 · HIGH ≥ 55 · MEDIUM ≥ 35 · LOW.
 
+Next to the score, each alert has a plain **assessment**: severity and confidence (kept separate, so a possibly
+critical event with thin evidence is shown as exactly that), impact (with people affected when the text says so),
+urgency, geographic scope, and evidence quality (reliability, independent sources, links, official confirmation).
+
+**5. Dashboard** (Statistics tab, `/api/stats`): reports by category, by country and per day, alerts by risk level and
+by verification status, infrastructure alerts, latest reports, sources with their trust and analyst reviews. Every
+number is computed from the stored data. A time filter (24h / 3 days / 7 days / all) applies to the board, the
+statistics, the feed and the map, whose density layer shows where most threat reports come from.
+
 ## What makes it stand out
 
 | Feature | Where | Why it matters |
@@ -68,7 +98,7 @@ Levels: CRITICAL ≥ 75 · HIGH ≥ 55 · MEDIUM ≥ 35 · LOW.
 | **Early-warning replay** | ▶ Replay on any alert | Re-runs the scoring as each signal arrived. In the Kosovo scenario the hybrid pattern is flagged **29h before the first outage** (HIGH 21h before). |
 | **Intelligence brief + PDF** | ▤ Intel brief | BLUF, key judgments in ICD 203 estimative language, TTPs, indicators to watch, recommended actions, sourced evidence. Export with the browser's *Save as PDF*. |
 | **MITRE ATT&CK · ATT&CK for ICS · DISARM** | alert detail, brief | Heuristic technique mapping per domain (`backend/app/ttp.py`), linked to attack.mitre.org. |
-| **Analyst feedback loop** | ✓ Confirm / ✗ False positive | Verdicts update every source's reliability: `(prior·4 + confirmed) / (4 + confirmed + rejected)`. Scores change immediately. |
+| **Analyst feedback loop** | Verification status | Confirmed and disproved alerts update every source's reliability: `(prior·4 + confirmed) / (4 + confirmed + rejected)`. Scores change immediately. |
 | **Entity network** | Network tab | Force-directed graph of alerts ↔ shared actors, orgs, tech, CVEs and narratives; highlights entities bridging campaigns. |
 | **Albanian · English · German** | EN/SQ/DE toggle | Full UI translation; the analyzer understands sq/de keywords and place names (Prishtinë, Mitrovicës, Deutschland, Wien…). |
 | **Local sources** | live ingest | Koha, Kallxo, Telegrafi, Prishtina Insight, DW Shqip, heise Security, tagesschau, DW Deutsch. |

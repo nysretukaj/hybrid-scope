@@ -28,6 +28,8 @@ def test_state_changing_endpoints_need_admin_token(public_client):
     r = public_client.post(f"/api/alerts/{alert_id}/feedback", json={"verdict": "confirmed"})
     assert r.status_code == 403
     assert public_client.post("/api/demo/snapshot").status_code == 403
+    sig_id = public_client.get("/api/signals").json()["signals"][0]["id"]
+    assert public_client.post(f"/api/signals/{sig_id}/classification", json={"category": "cyber"}).status_code == 403
 
 
 def test_read_only_features_stay_open(public_client):

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
-import { CATEGORY_ORDER, cat, pct } from '../lib/format'
+import { CATEGORY_ORDER, cat, causeLabel, pct } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 import { AnalyzerBadge, CategoryBadge, Chip, SectionTitle } from './ui'
 
@@ -102,6 +102,21 @@ export default function AnalyzePanel() {
                 </div>
               ))}
             </div>
+            {result.category !== 'other' && (result.subcategory || result.cause || result.claim || result.target) && (
+              <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                {[
+                  [t('a.sub'), result.subcategory && t(`sub.${result.subcategory}`)],
+                  [t('a.cause'), result.cause && causeLabel(t, result.cause, [result.category])],
+                  [t('a.claim'), result.claim && t(`claim.${result.claim}`)],
+                  [t('a.target'), result.target],
+                ].map(([k, v]) => (
+                  <div key={k} className="rounded-lg bg-slate-950/60 px-3 py-2 ring-1 ring-slate-800">
+                    <div className="text-[10px] uppercase tracking-widest text-slate-500">{k}</div>
+                    <div className="mt-0.5 text-slate-200">{v || '—'}</div>
+                  </div>
+                ))}
+              </div>
+            )}
             <p className="text-slate-300">{result.rationale}</p>
             {result.baseline && (
               <div className="rounded-lg bg-slate-950/60 p-3 text-xs ring-1 ring-slate-800">

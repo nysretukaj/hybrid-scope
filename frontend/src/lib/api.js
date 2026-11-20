@@ -28,7 +28,10 @@ const post = (url, body) =>
 // rationales, briefs and place names already translated.
 export const api = {
   health: () => fetch('/api/health').then(json),
-  stats: (source) => fetch(`/api/stats${qs({ source })}`).then(json),
+  stats: (source, hours, lang) => fetch(`/api/stats${qs({ source, hours, lang })}`).then(json),
+  geo: (source, hours, lang) => fetch(`/api/geo${qs({ source, hours, lang })}`).then(json),
+  aiSummary: (id, source, lang) => fetch(`/api/alerts/${id}/ai-summary${qs({ source, lang })}`).then(json),
+  classify: (signalId, category, subcategory) => post(`/api/signals/${signalId}/classification`, { category, subcategory }),
   alerts: (filters, lang) => fetch(`/api/alerts${qs({ ...filters, lang })}`).then(json),
   alert: (id, source, lang) => fetch(`/api/alerts/${id}${qs({ source, lang })}`).then(json),
   brief: (id, source, lang) => fetch(`/api/alerts/${id}/brief${qs({ source, lang })}`).then(json),

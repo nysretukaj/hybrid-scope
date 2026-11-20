@@ -8,6 +8,7 @@ import { Onboarding, StatusBanner } from './components/StatusBanner'
 import KpiBar from './components/KpiBar'
 import NetworkGraph from './components/NetworkGraph'
 import SignalStream from './components/SignalStream'
+import StatsPanel from './components/StatsPanel'
 import ThreatMap from './components/ThreatMap'
 import { api } from './lib/api'
 import { useI18n } from './lib/i18n'
@@ -22,7 +23,8 @@ function hashAlert() {
 export default function App() {
   const { t, lang } = useI18n()
   const [view, setView] = useState('board')
-  const [filters, setFilters] = useState({ q: '', category: '', zone: '', source: 'all', min_confidence: 0, hybrid_only: false, hide_dismissed: false })
+  // hours: 0 = the whole 10-day window
+  const [filters, setFilters] = useState({ q: '', category: '', zone: '', source: 'all', hours: 0, min_confidence: 0, hybrid_only: false, hide_dismissed: false })
   const [data, setData] = useState({ alerts: [], zones: [], total: 0 })
   const [stats, setStats] = useState(null)
   const [health, setHealth] = useState(null)
@@ -36,7 +38,7 @@ export default function App() {
 
   const refresh = useCallback(async () => {
     try {
-      const [a, s, h] = await Promise.all([api.alerts(filters, lang), api.stats(filters.source), api.health()])
+      const [a, s, h] = await Promise.all([api.alerts(filters, lang), api.stats(filters.source, filters.hours, lang), api.health()])
       setData(a)
       setStats(s)
       setHealth(h)
@@ -98,16 +100,21 @@ export default function App() {
   const onFeedback = async (verdict, note) => {
     try {
       const r = await api.feedback(selectedId, filters.source, verdict, note)
-      notify(t('t.feedback', { n: r.sources_updated.length }))
+      notify(t('t.verification', { s: t(`v.${r.verification}`) }))
       await refresh()
     } catch (e) {
       notify(e.message, 'err')
     }
   }
 
-  const onClearFeedback = async () => {
-    await api.clearFeedback(selectedId)
-    await refresh()
+  const onReclassify = async (signalId, category, subcategory) => {
+    try {
+      await api.classify(signalId, category, subcategory)
+      notify(t('t.reclass', { c: t(`cat.${category}`) }))
+      await refresh()
+    } catch (e) {
+      notify(e.message, 'err')
+    }
   }
 
   const onNotify = async () => {
@@ -157,7 +164,8 @@ export default function App() {
         <main className="grid flex-1 grid-cols-1 items-start gap-4 p-3 sm:p-4 lg:grid-cols-12">
           <section className="min-w-0 lg:col-span-8 lg:col-start-5 lg:row-start-1 xl:col-span-9 xl:col-start-4">
             <ThreatMap alerts={data.alerts} selectedId={selectedId} detail={detail} onSelect={selectAlert}
-              offline={health ? !!health.offline : null} updatedAt={data.generated_at} />
+              offline={health ? !!health.offline : null} lastIngest={health?.last_ingest?.finished_at}
+              source={filters.source} hours={filters.hours} refreshKey={tick} />
           </section>
           <section className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-[76px] lg:col-span-4 lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:h-[calc(100vh-92px)] xl:col-span-3">
             <Filters filters={filters} setFilters={setFilters} zones={data.zones} />
@@ -171,15 +179,18 @@ export default function App() {
               source={filters.source}
               notifyEnabled={(health?.notify_channels || []).length > 0}
               onFeedback={onFeedback}
-              onClearFeedback={onClearFeedback}
               onNotify={onNotify}
+              onReclassify={onReclassify}
               publicMode={!!health?.public_mode}
+              aiEnabled={!!health?.llm_enabled && !health?.offline}
             />
           </section>
         </main>
       )}
       {view === 'network' && <NetworkGraph source={filters.source} refreshKey={tick} onOpenAlert={openAlert} />}
-      {view === 'signals' && <SignalStream source={filters.source} alertsCount={data.total} refreshKey={tick} />}
+      {view === 'signals' && <SignalStream source={filters.source} hours={filters.hours} alertsCount={data.total} refreshKey={tick} />}
+      {view === 'stats' && <StatsPanel source={filters.source} hours={filters.hours} refreshKey={tick}
+        setHours={(h) => setFilters((f) => ({ ...f, hours: h }))} />}
       {view === 'analyze' && <AnalyzePanel />}
 
       <BottomNav view={view} setView={setView} />

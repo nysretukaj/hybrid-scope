@@ -28,12 +28,18 @@ CREATE TABLE IF NOT EXISTS signals (
     analyzer TEXT NOT NULL,
     rationale TEXT,
     synthetic INTEGER NOT NULL DEFAULT 0,
-    i18n TEXT NOT NULL DEFAULT '{}'     -- {"sq": {"title", "text", "rationale"}, "de": {...}}
+    i18n TEXT NOT NULL DEFAULT '{}',    -- {"sq": {"title", "text", "rationale"}, "de": {...}}
+    subcategory TEXT,
+    cause TEXT,                         -- deliberate | accidental | natural | unknown
+    claim TEXT,                         -- confirmed | alleged | opinion | reported
+    target TEXT,
+    content_hash TEXT,                  -- sha256 of title + text as collected
+    original_category TEXT              -- set when an analyst corrects the category
 );
 CREATE INDEX IF NOT EXISTS idx_signals_ts ON signals(timestamp);
 CREATE TABLE IF NOT EXISTS alert_feedback (
     alert_id TEXT PRIMARY KEY,
-    verdict TEXT NOT NULL,          -- confirmed | false_positive
+    verdict TEXT NOT NULL,          -- verification status: unverified | investigating | partial | confirmed | disproved
     note TEXT,
     sources TEXT NOT NULL,          -- JSON list of source names in the alert at review time
     created_at TEXT NOT NULL
@@ -55,7 +61,19 @@ COLUMNS = [
     "id", "source_name", "source_type", "source_reliability", "url", "title", "text", "timestamp",
     "ingested_at", "zone", "country", "lat", "lon", "entities", "category", "tags", "severity",
     "confidence", "analyzer", "rationale", "synthetic", "i18n",
+    "subcategory", "cause", "claim", "target", "content_hash", "original_category",
 ]
+# columns added after the first release, created on start for older databases
+ADDED_COLUMNS = {"i18n": "TEXT NOT NULL DEFAULT '{}'", "subcategory": "TEXT", "cause": "TEXT", "claim": "TEXT",
+                 "target": "TEXT", "content_hash": "TEXT", "original_category": "TEXT"}
+
+VERIFICATION = ("unverified", "investigating", "partial", "confirmed", "disproved")
+_LEGACY_VERDICT = {"false_positive": "disproved"}
+
+
+def norm_verdict(v: str | None) -> str:
+    v = _LEGACY_VERDICT.get(v or "", v or "")
+    return v if v in VERIFICATION else "unverified"
 
 
 @contextmanager
@@ -73,10 +91,11 @@ def get_conn():
 def init_db() -> None:
     with get_conn() as conn:
         conn.executescript(SCHEMA)
-        # migrate databases created before translations were stored per signal
+        # migrate databases created by earlier versions
         cols = {r[1] for r in conn.execute("PRAGMA table_info(signals)")}
-        if "i18n" not in cols:
-            conn.execute("ALTER TABLE signals ADD COLUMN i18n TEXT NOT NULL DEFAULT '{}'")
+        for name, decl in ADDED_COLUMNS.items():
+            if name not in cols:
+                conn.execute(f"ALTER TABLE signals ADD COLUMN {name} {decl}")
 
 
 def _to_row(sig: dict) -> tuple:
@@ -156,8 +175,11 @@ def fetch_unenriched_live(limit: int) -> list[str]:
 
 
 def update_analysis(signal_id: str, analysis: dict) -> None:
+    """Store an LLM re-analysis. Signals an analyst has corrected by hand are never overwritten."""
     with get_conn() as conn:
-        row = conn.execute("SELECT i18n FROM signals WHERE id = ?", (signal_id,)).fetchone()
+        row = conn.execute("SELECT i18n, analyzer FROM signals WHERE id = ?", (signal_id,)).fetchone()
+        if row and row[1] == "analyst":
+            return
         i18n = json.loads(row[0]) if row and row[0] else {}
         # the new rationale replaces the old one in every language; other translated fields are kept
         for lang in ("sq", "de"):
@@ -172,6 +194,31 @@ def update_analysis(signal_id: str, analysis: dict) -> None:
              json.dumps(analysis.get("entities") or {}, ensure_ascii=False),
              json.dumps({k: v for k, v in i18n.items() if v}, ensure_ascii=False), signal_id),
         )
+        conn.execute(
+            "UPDATE signals SET subcategory = ?, cause = ?, claim = ?, target = ? WHERE id = ?",
+            (analysis.get("subcategory"), analysis.get("cause"), analysis.get("claim"), analysis.get("target"), signal_id),
+        )
+        loc = analysis.get("location")
+        if loc:  # the LLM named a country the text-based gazetteer had missed
+            conn.execute(
+                "UPDATE signals SET zone = ?, country = ?, lat = ?, lon = ? WHERE id = ? AND zone IS NULL",
+                (loc.get("zone"), loc.get("country"), loc.get("lat"), loc.get("lon"), signal_id),
+            )
+
+
+def set_classification(signal_id: str, category: str, subcategory: str | None) -> dict | None:
+    """Analyst correction of a signal's category. The first automatic category is kept for audit."""
+    with get_conn() as conn:
+        row = conn.execute("SELECT category, original_category, tags FROM signals WHERE id = ?", (signal_id,)).fetchone()
+        if not row:
+            return None
+        original = row["original_category"] or row["category"]
+        tags = [t for t in json.loads(row["tags"] or "[]") if t != category]
+        conn.execute(
+            "UPDATE signals SET category = ?, subcategory = ?, tags = ?, analyzer = 'analyst', original_category = ? WHERE id = ?",
+            (category, subcategory, json.dumps(tags), original, signal_id),
+        )
+    return {"id": signal_id, "category": category, "subcategory": subcategory, "original_category": original}
 
 
 def count_signals() -> int:
@@ -207,13 +254,17 @@ def clear_feedback() -> None:
 def get_feedback() -> dict[str, dict]:
     with get_conn() as conn:
         rows = conn.execute("SELECT * FROM alert_feedback").fetchall()
-    return {r["alert_id"]: {**dict(r), "sources": json.loads(r["sources"])} for r in rows}
+    return {r["alert_id"]: {**dict(r), "verdict": norm_verdict(r["verdict"]), "sources": json.loads(r["sources"])}
+            for r in rows}
 
 
 def source_feedback_stats() -> dict[str, dict]:
+    """Confirmed alerts count for their sources, disproved ones against; the states in between are neutral."""
     stats: dict[str, dict] = {}
     for fb in get_feedback().values():
-        key = "confirmed" if fb["verdict"] == "confirmed" else "rejected"
+        key = {"confirmed": "confirmed", "disproved": "rejected"}.get(fb["verdict"])
+        if not key:
+            continue
         for src in fb["sources"]:
             stats.setdefault(src, {"confirmed": 0, "rejected": 0})[key] += 1
     return stats
