@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { level, levelLabel } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 
@@ -39,10 +39,15 @@ function readSeen() {
   try { return localStorage.getItem('hs-onboarded') === '1' } catch { return false }
 }
 
-/** First-visit guide in three short steps; dismissed for good with one click. */
+/** First-visit guide: what the page is, then three short steps. The header's 💡 button reopens it. */
 export function Onboarding() {
   const { t } = useI18n()
   const [seen, setSeen] = useState(readSeen)
+  useEffect(() => {
+    const reopen = () => setSeen(false)
+    window.addEventListener('hs-guide', reopen)
+    return () => window.removeEventListener('hs-guide', reopen)
+  }, [])
   if (seen) return null
   const close = () => {
     setSeen(true)
@@ -57,6 +62,7 @@ export function Onboarding() {
           {t('ob.close')}
         </button>
       </div>
+      <p className="mb-3 text-sm leading-relaxed text-slate-200">{t('ob.what')}</p>
       <ol className="grid gap-2 text-xs leading-relaxed text-slate-300 sm:grid-cols-3 sm:text-sm">
         {[1, 2, 3].map((i) => (
           <li key={i} className="flex gap-2">

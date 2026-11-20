@@ -95,19 +95,6 @@ export default function App() {
     }
   }
 
-  const onReset = async () => {
-    setBusy('reset')
-    try {
-      const r = await api.reset()
-      notify(t('t.reset', { n: r.loaded }))
-      await refresh()
-    } catch (e) {
-      notify(e.message, 'err')
-    } finally {
-      setBusy(null)
-    }
-  }
-
   const onFeedback = async (verdict, note) => {
     try {
       const r = await api.feedback(selectedId, filters.source, verdict, note)
@@ -154,7 +141,7 @@ export default function App() {
 
   return (
     <div className="has-bottom-nav flex min-h-screen flex-col">
-      <Header view={view} setView={setView} health={health} busy={busy} onIngest={onIngest} onReset={onReset} />
+      <Header view={view} setView={setView} health={health} busy={busy} onIngest={onIngest} />
       {error && <div className="mx-4 mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300 ring-1 ring-red-500/30">{t('t.backend', { e: error })}</div>}
       <KpiBar stats={stats} />
 

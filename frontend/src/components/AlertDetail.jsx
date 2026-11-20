@@ -198,9 +198,8 @@ function Evidence({ signal, active, links }) {
 }
 
 export default function AlertDetail({ alert, loading, source, notifyEnabled, onFeedback, onClearFeedback, onNotify, publicMode }) {
-  const { t, mode } = useI18n()
-  const [techOpen, setTechOpen] = useState(null) // null = follow the view mode
-  const showTech = techOpen ?? mode === 'expert'
+  const { t } = useI18n()
+  const [showTech, setTechOpen] = useState(false)
   const [activeSignal, setActiveSignal] = useState(null)
   const [replayOpen, setReplayOpen] = useState(false)
   const [replayFrame, setReplayFrame] = useState(null)
