@@ -112,8 +112,8 @@ export default function CorrelationTimeline({ alert, activeId, onSelectSignal, c
       {hovered && (
         <div className="pointer-events-none absolute right-2 top-2 max-w-xs rounded-lg bg-slate-950/95 p-2.5 text-xs ring-1 ring-slate-700">
           <div className="font-medium text-slate-100">{hovered.title}</div>
-          <div className="mt-1 text-slate-400">{hovered.source_name} · {fmtTime(hovered.timestamp)}</div>
-          <div className="mt-1 text-slate-500">severity {hovered.severity} · reliability {hovered.source_reliability}</div>
+          <div className="mt-1 text-slate-400">{hovered.source_label || hovered.source_name} · {fmtTime(hovered.timestamp)}</div>
+          <div className="mt-1 text-slate-500">{t('ui.sevRel', { s: hovered.severity, r: hovered.source_reliability })}</div>
         </div>
       )}
       <div className="mt-1 flex flex-wrap gap-4 text-[10px] text-slate-500">

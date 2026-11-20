@@ -1,10 +1,33 @@
-import { useEffect, useRef, useState } from 'react'
-import { CircleMarker, GeoJSON, MapContainer, Polyline, TileLayer, Tooltip, useMap } from 'react-leaflet'
-import { cat, level } from '../lib/format'
+import L from 'leaflet'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { GeoJSON, MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap, ZoomControl } from 'react-leaflet'
+import { cat, level, levelLabel, timeAgo } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 
 const TILE_ERRORS_BEFORE_FALLBACK = 4
-const VECTOR_STYLE = { color: '#334155', weight: 0.8, fillColor: '#111a2e', fillOpacity: 1 }
+const LEVEL_RANK = { LOW: 0, MEDIUM: 1, HIGH: 2, CRITICAL: 3 }
+const CAT_ICON = { disinformation: '📢', cyber: '💻', infrastructure: '⚡', physical: '🚁' }
+
+// Esri basemaps: no API key, attribution shown in the map corner.
+const BASEMAPS = {
+  satellite: [
+    { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics' },
+    { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', opacity: 0.9 },
+  ],
+  streets: [
+    { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', attribution: '&copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors' },
+  ],
+  dark: [
+    { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', attribution: 'Tiles &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors' },
+    { url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', opacity: 0.6 },
+  ],
+}
+// Country names in our data -> names in the bundled Natural Earth outlines
+const WORLD_NAME = { 'United States': 'United States of America', 'North Macedonia': 'Macedonia', 'Bosnia and Herzegovina': 'Bosnia and Herz.' }
+
+function readBasemap() {
+  try { return BASEMAPS[localStorage.getItem('hs-basemap')] ? localStorage.getItem('hs-basemap') : 'satellite' } catch { return 'satellite' }
+}
 
 function FlyTo({ target, id }) {
   const map = useMap()
@@ -15,93 +38,200 @@ function FlyTo({ target, id }) {
   return null
 }
 
-/** Country outlines bundled with the app (Natural Earth via world-atlas), loaded only when needed. */
-function useVectorBasemap(enabled) {
+function ResizeOn({ value }) {
+  const map = useMap()
+  useEffect(() => { const id = setTimeout(() => map.invalidateSize(), 220); return () => clearTimeout(id) }, [value, map])
+  return null
+}
+
+/**
+ * Keep the page easy to scroll: in the embedded map the mouse wheel scrolls the page (use +/− or
+ * fullscreen to zoom) and on touch screens one finger scrolls the page while two fingers move the map.
+ */
+function Interactions({ fullscreen }) {
+  const map = useMap()
+  useEffect(() => {
+    if (fullscreen) map.scrollWheelZoom.enable()
+    else map.scrollWheelZoom.disable()
+    if (L.Browser.mobile) {
+      if (fullscreen) map.dragging.enable()
+      else map.dragging.disable()
+    }
+  }, [fullscreen, map])
+  return null
+}
+
+/** Country outlines bundled with the app (Natural Earth via world-atlas): risk shading online, the whole basemap offline. */
+function useCountries() {
   const [geo, setGeo] = useState(null)
   useEffect(() => {
-    if (!enabled || geo) return
     let alive = true
     Promise.all([import('world-atlas/countries-50m.json'), import('topojson-client')]).then(([topo, tc]) => {
       const t = topo.default || topo
       if (alive) setGeo(tc.feature(t, t.objects.countries))
     })
     return () => { alive = false }
-  }, [enabled, geo])
+  }, [])
   return geo
 }
 
-export default function ThreatMap({ alerts, selectedId, detail, onSelect, offline }) {
+function alertIcon(a, selected, label) {
+  const color = level(a.level).color
+  const size = Math.round(14 + a.score / 6)
+  const rings = a.level === 'CRITICAL' || a.level === 'HIGH'
+    ? `<span class="ring"></span><span class="ring r2"></span>` : ''
+  const html = `<div class="hs-marker ${a.level.toLowerCase()}${selected ? ' selected' : ''}" style="--c:${color};width:${size}px;height:${size}px">
+    ${rings}<span class="core">${a.is_hybrid ? '◆' : ''}</span>
+    ${label ? `<span class="hs-label">${label}</span>` : ''}</div>`
+  return L.divIcon({ html, className: 'hs-icon', iconSize: [size, size], iconAnchor: [size / 2, size / 2] })
+}
+
+function signalIcon(s) {
+  const color = cat(s.category).color
+  return L.divIcon({
+    html: `<div class="hs-sig" style="background:${color}">${CAT_ICON[s.category] || '•'}</div>`,
+    className: 'hs-icon', iconSize: [24, 24], iconAnchor: [12, 12],
+  })
+}
+
+export default function ThreatMap({ alerts, selectedId, detail, onSelect, offline, updatedAt }) {
   const { t } = useI18n()
+  const [basemap, setBasemap] = useState(readBasemap)
   const [tilesFailed, setTilesFailed] = useState(false)
+  const [fullscreen, setFullscreen] = useState(false)
+  const [, setClock] = useState(0)
   const tileErrors = useRef(0)
-  // offline is null until the backend has answered: draw no basemap yet, so an offline demo
-  // never even tries to reach the tile server
+  const countries = useCountries()
+
+  // offline is null until the backend has answered: no basemap request before we know
   const useVector = offline === true || tilesFailed
   const showTiles = offline === false && !tilesFailed
-  const geo = useVectorBasemap(useVector)
   const located = detail?.signals?.filter((s) => s.lat != null) || []
+
+  useEffect(() => { const id = setInterval(() => setClock((c) => c + 1), 15000); return () => clearInterval(id) }, [])
+  useEffect(() => {
+    if (!fullscreen) return
+    const onKey = (e) => e.key === 'Escape' && setFullscreen(false)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [fullscreen])
+
+  const chooseBasemap = (b) => {
+    setBasemap(b)
+    try { localStorage.setItem('hs-basemap', b) } catch { /* storage unavailable */ }
+  }
+
+  // highest alert level per country, for the shading
+  const countryRisk = useMemo(() => {
+    const m = {}
+    for (const a of alerts) {
+      for (const c of a.countries || []) {
+        const name = WORLD_NAME[c] || c
+        if (!m[name] || LEVEL_RANK[a.level] > LEVEL_RANK[m[name].level]) m[name] = { level: a.level, label: a.zone_label || a.zone }
+      }
+    }
+    return m
+  }, [alerts])
+  const riskKey = Object.entries(countryRisk).map(([k, v]) => `${k}:${v.level}`).sort().join('|') + `|${basemap}|${useVector}|${t('map.legend')}`
+
+  const countryStyle = (f) => {
+    const r = countryRisk[f.properties.name]
+    const base = useVector ? { color: '#334155', weight: 0.8, fillColor: '#111a2e', fillOpacity: 1 } : { color: 'transparent', weight: 0, fillOpacity: 0 }
+    if (!r) return base
+    const c = level(r.level).color
+    return { ...base, color: c, weight: 1.6, fillColor: c, fillOpacity: useVector ? 0.45 : (basemap === 'satellite' ? 0.28 : 0.22) }
+  }
+  const onEachCountry = (f, layer) => {
+    const r = countryRisk[f.properties.name]
+    if (r) layer.bindTooltip(`<b>${r.label}</b><br/>${t('map.country', { level: levelLabel(r.level) })}`, { sticky: true })
+  }
 
   const onTileError = () => {
     tileErrors.current += 1
     if (tileErrors.current >= TILE_ERRORS_BEFORE_FALLBACK) setTilesFailed(true)
   }
 
+  // permanent name labels only for the most important alerts, to keep the map readable
+  const labelled = new Set(alerts.filter((a) => a.centroid && (a.level === 'CRITICAL' || a.id === selectedId)).map((a) => a.id))
+
   return (
-    <div className="panel relative overflow-hidden">
-      <MapContainer center={[50, 15]} zoom={4} minZoom={2} maxZoom={useVector ? 8 : 16} worldCopyJump className="h-[340px] w-full" zoomControl={false}>
-        {useVector && geo && <GeoJSON key="vector-basemap" data={geo} style={VECTOR_STYLE} interactive={false} />}
-        {showTiles && (
-          <>
-            <TileLayer
-              url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
-              attribution="Tiles &copy; Esri, HERE, Garmin, &copy; OpenStreetMap contributors"
-              maxZoom={16}
-              eventHandlers={{ tileerror: onTileError }}
-            />
-            <TileLayer
-              url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
-              maxZoom={16}
-              opacity={0.6}
-            />
-          </>
-        )}
-        {alerts.filter((a) => a.centroid).map((a) => {
-          const l = level(a.level)
-          const selected = a.id === selectedId
-          return (
-            <CircleMarker
-              key={a.id}
-              center={[a.centroid.lat, a.centroid.lon]}
-              radius={6 + a.score / 7}
-              pathOptions={{ color: l.color, fillColor: l.color, fillOpacity: selected ? 0.35 : 0.18, weight: selected ? 2.5 : 1.2, dashArray: a.is_hybrid ? null : '3 4' }}
-              eventHandlers={{ click: () => onSelect(a.id) }}
-            >
-              <Tooltip direction="top">
-                <b>{a.zone}</b> · {a.level} {Math.round(a.score)}{a.is_hybrid ? ' · hybrid' : ''}
-              </Tooltip>
-            </CircleMarker>
-          )
-        })}
-        {detail && detail.centroid && located.map((s) => (
-          <Polyline key={`l-${s.id}`} positions={[[detail.centroid.lat, detail.centroid.lon], [s.lat, s.lon]]} pathOptions={{ color: cat(s.category).color, weight: 1, opacity: 0.35 }} />
+    <div className={`panel relative overflow-hidden ${fullscreen ? 'map-fullscreen' : ''}`}>
+      <MapContainer center={[48, 18]} zoom={4} minZoom={2} maxZoom={useVector ? 8 : 17} worldCopyJump zoomControl={false}
+        className={`w-full ${fullscreen ? 'h-full' : 'h-[300px] sm:h-[380px] xl:h-[460px]'}`}>
+        <ResizeOn value={fullscreen} />
+        <Interactions fullscreen={fullscreen} />
+        <ZoomControl position="bottomright" />
+        {showTiles && BASEMAPS[basemap].map((layer, k) => (
+          <TileLayer key={`${basemap}-${k}`} url={layer.url} attribution={layer.attribution} opacity={layer.opacity ?? 1}
+            maxZoom={17} eventHandlers={k === 0 ? { tileerror: onTileError } : undefined} />
+        ))}
+        {countries && <GeoJSON key={riskKey} data={countries} style={countryStyle} onEachFeature={onEachCountry} />}
+
+        {detail?.centroid && located.map((s) => (
+          <Polyline key={`l-${s.id}`} positions={[[detail.centroid.lat, detail.centroid.lon], [s.lat, s.lon]]}
+            pathOptions={{ color: cat(s.category).color, weight: 2, opacity: 0.85, className: 'hs-flow' }} />
         ))}
         {located.map((s) => (
-          <CircleMarker
-            key={s.id}
-            center={[s.lat, s.lon]}
-            radius={4}
-            pathOptions={{ color: '#0b1220', weight: 1, fillColor: cat(s.category).color, fillOpacity: 0.95 }}
+          <Marker key={s.id} position={[s.lat, s.lon]} icon={signalIcon(s)}>
+            <Tooltip direction="top" offset={[0, -10]}>{s.title}</Tooltip>
+          </Marker>
+        ))}
+        {alerts.filter((a) => a.centroid).map((a) => (
+          <Marker
+            key={a.id}
+            position={[a.centroid.lat, a.centroid.lon]}
+            icon={alertIcon(a, a.id === selectedId, labelled.has(a.id) ? `${a.zone_label || a.zone} · ${Math.round(a.score)}` : '')}
+            zIndexOffset={a.id === selectedId ? 1000 : LEVEL_RANK[a.level] * 100}
+            eventHandlers={{ click: () => onSelect(a.id) }}
           >
-            <Tooltip direction="top">{s.title}</Tooltip>
-          </CircleMarker>
+            {!labelled.has(a.id) && (
+              <Tooltip direction="top" offset={[0, -8]}>
+                <b>{a.zone_label || a.zone}</b> · {levelLabel(a.level)} {Math.round(a.score)}
+              </Tooltip>
+            )}
+          </Marker>
         ))}
         <FlyTo target={detail?.centroid} id={detail?.id} />
       </MapContainer>
-      <div className="pointer-events-none absolute bottom-2 left-2 z-[500] flex gap-3 rounded-md bg-slate-950/80 px-2 py-1 text-[10px] text-slate-400 ring-1 ring-slate-800">
-        <span>{t('m.hybrid')}</span>
-        <span>{t('m.single')}</span>
-        <span>{t('m.size')}</span>
-        {useVector && <span className="text-amber-300/80">{t('m.offlineMap')}</span>}
+
+      {/* live status */}
+      <div className="pointer-events-none absolute left-2 top-2 z-[500] flex items-center gap-2 rounded-md bg-slate-950/85 px-2 py-1 text-[11px] text-slate-300 ring-1 ring-slate-700">
+        <span className="relative inline-block h-2 w-2 rounded-full text-red-500 live-dot" style={{ background: 'currentColor' }} />
+        <span className="font-semibold tracking-widest text-red-300">{t('map.live')}</span>
+        {updatedAt && <span className="hidden text-slate-400 sm:inline">· {t('map.updated', { t: timeAgo(updatedAt) })}</span>}
+      </div>
+
+      {/* basemap switcher + full screen */}
+      <div className="absolute right-2 top-2 z-[500] flex gap-1">
+        {!useVector && (
+          <div className="flex rounded-md bg-slate-950/85 p-0.5 ring-1 ring-slate-700">
+            {Object.keys(BASEMAPS).map((b) => (
+              <button key={b} onClick={() => chooseBasemap(b)}
+                className={`rounded px-2 py-1 text-[11px] ${basemap === b ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-slate-200'}`}>
+                {t(`map.${b}`)}
+              </button>
+            ))}
+          </div>
+        )}
+        <button onClick={() => setFullscreen((f) => !f)} title={fullscreen ? t('map.exit') : t('map.fullscreen')}
+          aria-label={fullscreen ? t('map.exit') : t('map.fullscreen')}
+          className="rounded-md bg-slate-950/85 px-2 py-1 text-sm text-slate-200 ring-1 ring-slate-700 hover:bg-slate-800">
+          {fullscreen ? '✕' : '⛶'}
+        </button>
+      </div>
+
+      {/* legend: colours plus what they mean */}
+      <div className="pointer-events-none absolute bottom-2 left-2 z-[500] rounded-md bg-slate-950/85 px-2.5 py-1.5 text-[10px] text-slate-300 ring-1 ring-slate-700">
+        <div className="mb-1 font-semibold uppercase tracking-widest text-slate-500">{t('map.legend')}</div>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 sm:grid-cols-1">
+          {['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map((l) => (
+            <span key={l} className="flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full" style={{ background: level(l).color }} />
+              {levelLabel(l)}<span className="hidden text-slate-500 sm:inline">· {t(`lv.${l}`)}</span>
+            </span>
+          ))}
+        </div>
+        {useVector && <div className="mt-1 text-amber-300/80">{t('m.offlineMap')}</div>}
       </div>
     </div>
   )

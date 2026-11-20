@@ -27,7 +27,9 @@ Respond with ONLY a JSON object:
   "severity": number 0-1 (potential harm if true),
   "confidence": number 0-1 (how sure you are of the classification),
   "entities": {"actors": [], "orgs": [], "technologies": [], "narratives": []},
-  "rationale": "1-2 sentences in English explaining the classification and severity"
+  "rationale": "1-2 sentences in English explaining the classification and severity",
+  "rationale_sq": "the same rationale in Albanian",
+  "rationale_de": "the same rationale in German"
 }
 "physical" covers geopolitical / physical security events (military, sabotage, protests, drones, jamming).
 "other" = not a security threat (sports, culture, routine politics, product news). Ordinary crime, traffic
@@ -144,5 +146,7 @@ def analyze_llm(title: str, text: str, purpose: str = "analyze") -> dict | None:
         "entities": {k: [str(x) for x in ents.get(k) or [] if str(x).strip()][:8]
                      for k in ("actors", "orgs", "technologies", "narratives")},
         "rationale": str(data.get("rationale", "")).strip()[:500],
+        "i18n": {lang: {"rationale": str(data[f"rationale_{lang}"]).strip()[:500]}
+                 for lang in ("sq", "de") if str(data.get(f"rationale_{lang}") or "").strip()},
         "analyzer": f"llm:{model}",
     }

@@ -1,10 +1,33 @@
 import { useCallback, useState } from 'react'
-import { cat, fmtTime, pct, timeAgo } from '../lib/format'
+import { cat, fmtTime, level, pct, timeAgo } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 import BriefModal, { ttpUrl } from './BriefModal'
 import CorrelationTimeline from './CorrelationTimeline'
 import ReplayPanel from './ReplayPanel'
-import { AnalyzerBadge, CategoryBadge, Chip, LevelBadge, ReliabilityBar, ScoreRing, SectionTitle } from './ui'
+import { AnalyzerBadge, CategoryBadge, Chip, Help, LevelBadge, ReliabilityBar, ScoreRing, SectionTitle } from './ui'
+
+/** The alert explained in two or three everyday sentences, for readers who are not analysts. */
+function PlainSummary({ alert }) {
+  const { t } = useI18n()
+  const zone = alert.zone_label || alert.zone
+  const names = alert.categories.map((c) => t(`cat.${c}`).split(' ')[0].toLowerCase())
+  const what = alert.is_hybrid
+    ? t('pl.hybrid', { n: alert.categories.length, zone, cats: names.join(', ') })
+    : alert.categories.length > 1
+      ? t('pl.multi', { zone })
+      : t('pl.single', { cat: names[0] || '', zone })
+  const color = level(alert.level).color
+  return (
+    <div className="mt-4 rounded-xl p-4 ring-1" style={{ background: `${color}12`, '--tw-ring-color': `${color}50` }}>
+      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em]" style={{ color }}>💬 {t('pl.title')}</div>
+      <p className="text-sm leading-relaxed text-slate-200">{what}</p>
+      <p className="mt-1.5 text-sm font-semibold leading-relaxed text-slate-100">{t(`pl.level.${alert.level}`)}</p>
+      <p className="mt-1.5 flex items-center text-xs text-slate-400">
+        {t('pl.basis', { n: alert.signal_count, k: alert.source_count })}<Help term="sources" />
+      </p>
+    </div>
+  )
+}
 
 const BAR_COLORS = { severity: '#f87171', hybrid: '#e879f9', corroboration: '#22d3ee', recency: '#f59e0b', reliability: '#34d399' }
 const ENTITY_ICON = { actor: '◆', organisation: '▣', technology: '⚙', CVE: '⚠', narrative: '#' }
@@ -18,7 +41,7 @@ function ScoreBreakdown({ breakdown, score }) {
   const { t } = useI18n()
   return (
     <div>
-      <SectionTitle right={<span className="font-mono text-xs text-slate-400">Σ {score}</span>}>{t('d.why')}</SectionTitle>
+      <SectionTitle right={<span className="font-mono text-xs text-slate-400">Σ {score}</span>}><span className="flex items-center">{t('d.why')}<Help term="score" align="right" /></span></SectionTitle>
       <div className="space-y-2.5">
         {breakdown.map((b) => (
           <div key={b.key}>
@@ -131,19 +154,19 @@ function Evidence({ signal, active, links }) {
         {signal.tags?.map((tg) => <span key={tg} className={`text-[10px] ${cat(tg).text}`}>+{t(`cat.${tg}`).split(' ')[0].toLowerCase()}</span>)}
         <span className="font-mono">{fmtTime(signal.timestamp)}</span>
         <span>({timeAgo(signal.timestamp)})</span>
-        <span className="ml-auto font-mono text-slate-400" title="severity × reliability × recency">P{Math.round(signal.score)}</span>
+        <span className="ml-auto font-mono text-slate-400" title={t('ui.priority')}>P{Math.round(signal.score)}</span>
       </div>
       <div className="mt-1.5 text-sm font-medium text-slate-100">{signal.title}</div>
       <p className="mt-1 text-[13px] leading-relaxed text-slate-400">{signal.text}</p>
 
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-slate-500">
-        <span className="text-slate-300">{signal.source_name}</span>
-        <span>{signal.source_type}</span>
+        <span className="text-slate-300">{signal.source_label || signal.source_name}</span>
+        <span>{signal.source_type_label || signal.source_type}</span>
         <ReliabilityBar value={signal.source_reliability} />
         {signal.source_reliability_prior != null && (
           <span className="text-emerald-400/80">{t('d.relAdjusted', { a: signal.source_reliability_prior, b: signal.source_reliability })}</span>
         )}
-        <span>sev {signal.severity} · conf {pct(signal.confidence)}</span>
+        <span>{t('ui.sevConf', { s: signal.severity, c: pct(signal.confidence) })}</span>
         {signal.url
           ? <a href={signal.url} target="_blank" rel="noreferrer" className="text-cyan-400 hover:underline">{t('d.open')}</a>
           : <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300 ring-1 ring-amber-500/30">{t('d.synthetic')}</span>}
@@ -175,7 +198,9 @@ function Evidence({ signal, active, links }) {
 }
 
 export default function AlertDetail({ alert, loading, source, notifyEnabled, onFeedback, onClearFeedback, onNotify, publicMode }) {
-  const { t } = useI18n()
+  const { t, mode } = useI18n()
+  const [techOpen, setTechOpen] = useState(null) // null = follow the view mode
+  const showTech = techOpen ?? mode === 'expert'
   const [activeSignal, setActiveSignal] = useState(null)
   const [replayOpen, setReplayOpen] = useState(false)
   const [replayFrame, setReplayFrame] = useState(null)
@@ -193,31 +218,35 @@ export default function AlertDetail({ alert, loading, source, notifyEnabled, onF
 
   return (
     <div className="panel p-4 sm:p-5">
-      <div className="flex flex-wrap items-start gap-5">
-        <ScoreRing score={alert.score} levelName={alert.level} />
-        <div className="min-w-0 flex-1">
+      <div className="flex flex-wrap items-start gap-4 sm:gap-5">
+        <ScoreRing score={alert.score} levelName={alert.level} size={76} />
+        <div className="w-full min-w-0 sm:w-auto sm:flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <LevelBadge value={alert.level} />
-            {alert.is_hybrid && <span className="rounded-md bg-fuchsia-500/15 px-2 py-0.5 text-[10px] font-bold tracking-widest text-fuchsia-300 ring-1 ring-fuchsia-500/40">{t('d.hybrid')}</span>}
+            {alert.is_hybrid && <span className="flex items-center rounded-md bg-fuchsia-500/15 px-2 py-0.5 text-[10px] font-bold tracking-widest text-fuchsia-300 ring-1 ring-fuchsia-500/40">{t('d.hybrid')}<Help term="hybrid" /></span>}
             {alert.synthetic && <span className="rounded-md bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300 ring-1 ring-amber-500/30">{t('d.exercise')}</span>}
-            <span className="text-xs text-slate-500">{t('d.confidence')} <span className="font-mono text-slate-200">{pct(alert.confidence)}</span></span>
+            <span className="flex items-center text-xs text-slate-500">{t('d.confidence')}&nbsp;<span className="font-mono text-slate-200">{pct(alert.confidence)}</span><Help term="confidence" /></span>
           </div>
-          <h2 className="mt-2 text-xl font-semibold text-slate-50">{alert.title}</h2>
-          <p className="mt-1 text-sm text-slate-400">{alert.summary}</p>
+          <h2 className="mt-2 text-lg font-semibold text-slate-50 sm:text-xl">{alert.title}</h2>
+          {showTech && <p className="mt-1 text-sm text-slate-400">{alert.summary}</p>}
           <div className="mt-3"><Sequence sequence={alert.sequence} firstSeen={alert.first_seen} /></div>
         </div>
-        <div className="flex shrink-0 flex-col gap-2">
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:shrink-0 sm:flex-col">
           <button
             onClick={() => setReplayOpen((o) => !o)}
-            className={`rounded-lg px-4 py-2 text-sm font-medium ring-1 transition ${replayOpen ? 'bg-fuchsia-500/25 text-fuchsia-100 ring-fuchsia-400/60' : 'bg-fuchsia-500/10 text-fuchsia-200 ring-fuchsia-500/40 hover:bg-fuchsia-500/20'}`}
+            className={`rounded-lg px-4 py-2 text-left text-sm font-medium ring-1 transition ${replayOpen ? 'bg-fuchsia-500/25 text-fuchsia-100 ring-fuchsia-400/60' : 'bg-fuchsia-500/10 text-fuchsia-200 ring-fuchsia-500/40 hover:bg-fuchsia-500/20'}`}
           >
             ▶ {t('d.replay')}
+            <span className="block text-[10px] font-normal opacity-70">{t('d.replaySub')}</span>
           </button>
-          <button onClick={() => setBriefOpen(true)} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-white">
+          <button onClick={() => setBriefOpen(true)} className="rounded-lg bg-slate-100 px-4 py-2 text-left text-sm font-semibold text-slate-900 hover:bg-white">
             ▤ {t('d.brief')}
+            <span className="block text-[10px] font-normal opacity-70">{t('d.briefSub')}</span>
           </button>
         </div>
       </div>
+
+      <PlainSummary alert={alert} />
 
       <FeedbackBar alert={alert} onFeedback={onFeedback} onClearFeedback={onClearFeedback} notifyEnabled={notifyEnabled} onNotify={onNotify} publicMode={publicMode} />
 
@@ -228,14 +257,19 @@ export default function AlertDetail({ alert, loading, source, notifyEnabled, onF
           <SectionTitle right={<span className="text-[11px] text-slate-500">{t('d.links', { n: alert.links.length })}</span>}>{t('d.timeline')}</SectionTitle>
           <CorrelationTimeline alert={alert} activeId={replayFrame?.signal_id || activeSignal} onSelectSignal={selectSignal} cutoff={replayOpen ? replayFrame?.t : null} />
         </div>
-        <div className="lg:col-span-2">
+        {showTech && <div className="lg:col-span-2">
           <ScoreBreakdown breakdown={alert.breakdown} score={alert.score} />
-        </div>
+        </div>}
       </div>
 
-      <Ttps ttps={alert.ttps} onJump={selectSignal} />
+      <button onClick={() => setTechOpen(!showTech)} aria-expanded={showTech}
+        className="mt-6 w-full rounded-lg py-2 text-xs font-medium text-slate-400 ring-1 ring-slate-700 hover:bg-slate-800/50 hover:text-slate-200">
+        {showTech ? `▾ ${t('d.techHide')}` : `▸ ${t('d.techShow')}`}
+      </button>
 
-      {alert.shared_entities.length > 0 && (
+      {showTech && <Ttps ttps={alert.ttps} onJump={selectSignal} />}
+
+      {showTech && alert.shared_entities.length > 0 && (
         <div className="mt-6">
           <SectionTitle>{t('d.linking')}</SectionTitle>
           <div className="flex flex-wrap gap-2">

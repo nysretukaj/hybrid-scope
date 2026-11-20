@@ -14,6 +14,7 @@ from statistics import mean
 from . import scoring
 from .analyzer.local import CATEGORY_LABELS
 from .config import CLUSTER_GAP_HOURS, CROSS_CATEGORY_LINK_HOURS
+from .localize import alert_texts, link_reason
 from .normalize import iso, parse_iso
 from .ttp import map_ttps
 
@@ -62,14 +63,15 @@ def find_links(signals: list[dict]):
 
     links: dict[tuple, dict] = {}
 
-    def add(a: dict, b: dict, kind: str, reason: str):
+    def add(a: dict, b: dict, kind: str, reason: dict):
+        """reason is structured ({"k": "entity"|"temporal", ...}) so it can be rendered in any language."""
         if a["id"] == b["id"]:
             return
         first, second = (a, b) if a["_ts"] <= b["_ts"] else (b, a)
-        link = links.setdefault((first["id"], second["id"]), {"source": first["id"], "target": second["id"], "kinds": set(), "reasons": []})
+        link = links.setdefault((first["id"], second["id"]), {"source": first["id"], "target": second["id"], "kinds": set(), "reason_params": []})
         link["kinds"].add(kind)
-        if reason not in link["reasons"]:
-            link["reasons"].append(reason)
+        if reason not in link["reason_params"]:
+            link["reason_params"].append(reason)
 
     # Entity links: chain signals sharing an entity in time order (keeps edges linear in size).
     for key, sigs in index.items():
@@ -77,7 +79,7 @@ def find_links(signals: list[dict]):
             continue
         ordered = sorted(sigs, key=lambda s: s["_ts"])
         for a, b in zip(ordered, ordered[1:]):
-            add(a, b, "entity", f"Shared {LINK_TYPES[key[0]]}: {display[key]}")
+            add(a, b, "entity", {"k": "entity", "etype": LINK_TYPES[key[0]], "name": display[key]})
 
     # Temporal cross-domain links: nearest earlier signal of each *other* domain within the window.
     ordered = sorted(signals, key=lambda s: s["_ts"])
@@ -89,13 +91,13 @@ def find_links(signals: list[dict]):
                 break
             if prev["category"] != s["category"] and prev["category"] not in linked_cats:
                 linked_cats.add(prev["category"])
-                add(prev, s, "temporal",
-                    f"{CATEGORY_LABELS[prev['category']]} -> {CATEGORY_LABELS[s['category']]} within {gap:.0f}h")
+                add(prev, s, "temporal", {"k": "temporal", "a": prev["category"], "b": s["category"], "h": f"{gap:.0f}"})
 
     out = [{
         "source": l["source"], "target": l["target"],
         "kind": "entity" if "entity" in l["kinds"] else "temporal",
-        "reasons": l["reasons"],
+        "reason_params": l["reason_params"],
+        "reasons": [link_reason(r, "en") for r in l["reason_params"]],
     } for l in links.values()]
 
     shared = sorted(
@@ -142,27 +144,25 @@ def make_alert(zone: str, sigs: list[dict], now: datetime) -> dict:
         sequence.append({"category": c, "label": CATEGORY_LABELS[c], "first_seen": iso(first_c)})
     sequence.sort(key=lambda x: x["first_seen"])
 
-    labels = [CATEGORY_LABELS[c] for c in categories]
-    if is_hybrid:
-        title = f"Hybrid threat pattern - {zone}"
-    else:
-        title = f"{CATEGORY_LABELS[categories[0]]} activity - {zone}" if len(categories) == 1 else f"Multi-domain activity - {zone}"
-
-    span_h = (last - first).total_seconds() / 3600
-    summary = (f"{len(sigs)} signal(s) from {len(sources)} source(s) in {zone} over {span_h:.0f}h"
-               f" spanning {', '.join(labels)}.")
-    if is_hybrid and len(sequence) > 1:
-        summary += " Sequence: " + " -> ".join(x["label"] for x in sequence) + "."
-    if shared:
-        summary += " Linked by " + ", ".join(f"{e['name']} ({e['count']})" for e in shared[:3]) + "."
+    # Structured inputs for the title and summary; localize.alert_texts renders them in any language.
+    text_params = {
+        "kind": "hybrid" if is_hybrid else ("single" if len(categories) == 1 else "multi"),
+        "n": len(sigs), "k": len(sources), "h": f"{(last - first).total_seconds() / 3600:.0f}",
+        "cats": categories, "seq": [x["category"] for x in sequence] if is_hybrid and len(sequence) > 1 else [],
+        "shared": [[e["name"], e["count"]] for e in shared[:3]],
+    }
+    title, summary = alert_texts(zone, text_params, "en")
 
     return {
         "id": hashlib.sha1(f"{zone}|{sigs[0]['id']}".encode()).hexdigest()[:12],
         "zone": zone,
+        "zone_label": zone,
         "countries": sorted({s["country"] for s in sigs if s.get("country")}),
         "title": title,
         "headline": top["title"],
+        "headline_id": top["id"],
         "summary": summary,
+        "text_params": text_params,
         "level": level,
         "score": score,
         "confidence": confidence,
@@ -197,7 +197,7 @@ def replay(alert: dict) -> dict:
         state = make_alert(alert["zone"], [dict(x) for x in sigs[: i + 1]], s["_ts"])
         frames.append({
             "t": iso(s["_ts"]), "signal_id": s["id"], "title": s["title"], "category": s["category"],
-            "source": s["source_name"], "score": state["score"], "level": state["level"],
+            "source": s.get("source_label") or s["source_name"], "score": state["score"], "level": state["level"],
             "is_hybrid": state["is_hybrid"], "confidence": state["confidence"],
             "categories": state["categories"], "links": len(state["links"]),
         })

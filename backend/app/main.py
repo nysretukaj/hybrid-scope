@@ -23,6 +23,8 @@ from .graph import build_graph
 from .ingest.live import run_live_ingest
 from .ingest.seed import reset_seed
 from .normalize import iso, parse_iso, utcnow
+from .i18n import norm_lang, zone_name
+from .localize import localize_alert, localize_signal
 from .snapshot import cache_key, export_snapshot, load_samples, load_snapshot, snapshot_info
 
 logging.basicConfig(level=logging.INFO)
@@ -78,7 +80,7 @@ async def ingest_once() -> dict | None:
             return await _offline_ingest()
         report = await run_live_ingest()
         report["llm_enrichment"] = start_enrichment(report.pop("new_ids", []))
-        alerts, _ = _alerts("all")
+        alerts, _ = _alerts("all", config.NOTIFY_LANG)
         report["notified"] = await notify.notify_new(alerts)
         STATE["last_ingest"] = report
         log.info("live ingest: %s fetched, %s new, %s notified", report["fetched"], report["inserted"], report["notified"])
@@ -162,9 +164,9 @@ def _signals(source: str = "all"):
     return apply_feedback(sigs), now
 
 
-def _alerts(source: str = "all"):
+def _alerts(source: str = "all", lang: str = "en"):
     sigs, now = _signals(source)
-    alerts = build_alerts(sigs, now)
+    alerts = [localize_alert(a, lang) for a in build_alerts(sigs, now)]
     feedback = db.get_feedback()
     for a in alerts:
         fb = feedback.get(a["id"])
@@ -172,8 +174,19 @@ def _alerts(source: str = "all"):
     return alerts, now
 
 
-def _find(alert_id: str, source: str) -> dict:
-    alerts, _ = _alerts(source)
+def _localized_analysis(result: dict, lang: str) -> dict:
+    """Swap in the rationale and zone name for the requested language."""
+    out = dict(result)
+    translated = (result.get("i18n") or {}).get(norm_lang(lang)) or {}
+    if translated.get("rationale"):
+        out["rationale"] = translated["rationale"]
+    if out.get("location"):
+        out["location"] = {**out["location"], "zone_label": zone_name(out["location"].get("zone"), lang)}
+    return out
+
+
+def _find(alert_id: str, source: str, lang: str = "en") -> dict:
+    alerts, _ = _alerts(source, lang)
     for a in alerts:
         if a["id"] == alert_id:
             return a
@@ -181,7 +194,7 @@ def _find(alert_id: str, source: str) -> dict:
 
 
 def _alert_text(a: dict) -> str:
-    parts = [a["title"], a["headline"], a["zone"], a["summary"]]
+    parts = [a["title"], a["headline"], a["zone"], a.get("zone_label") or "", a["summary"]]
     parts += [e["name"] for e in a["shared_entities"]]
     parts += [t["id"] + " " + t["name"] for t in a["ttps"]]
     parts += [s["title"] for s in a["signals"]]
@@ -251,9 +264,11 @@ def list_alerts(
     hide_dismissed: bool = False,
     source: str = "all",
     q: Optional[str] = None,
+    lang: str = "en",
 ):
-    alerts, now = _alerts(source)
-    zones = sorted({a["zone"] for a in alerts})
+    alerts, now = _alerts(source, lang)
+    zones = sorted(({"value": z, "label": zone_name(z, lang)} for z in {a["zone"] for a in alerts}),
+                   key=lambda z: z["label"])
     needle = (q or "").strip().lower()
     filtered = [
         a for a in alerts
@@ -269,18 +284,18 @@ def list_alerts(
 
 
 @app.get("/api/alerts/{alert_id}")
-def get_alert(alert_id: str, source: str = "all"):
-    return _find(alert_id, source)
+def get_alert(alert_id: str, source: str = "all", lang: str = "en"):
+    return _find(alert_id, source, lang)
 
 
 @app.get("/api/alerts/{alert_id}/brief")
-def get_brief(alert_id: str, source: str = "all"):
-    return build_brief(_find(alert_id, source))
+def get_brief(alert_id: str, source: str = "all", lang: str = "en"):
+    return build_brief(_find(alert_id, source, lang), lang)
 
 
 @app.get("/api/alerts/{alert_id}/replay")
-def get_replay(alert_id: str, source: str = "all"):
-    return replay(_find(alert_id, source))
+def get_replay(alert_id: str, source: str = "all", lang: str = "en"):
+    return replay(_find(alert_id, source, lang))
 
 
 class FeedbackRequest(BaseModel):
@@ -305,12 +320,20 @@ def delete_feedback(alert_id: str):
 async def notify_alert(alert_id: str, source: str = "all"):
     if not notify.channels():
         raise HTTPException(400, "No notification channel configured (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID or ALERT_WEBHOOK_URL)")
-    return {"results": await notify.send(_find(alert_id, source))}
+    return {"results": await notify.send(_find(alert_id, source, config.NOTIFY_LANG))}
+
+
+@app.post("/api/notify/test", dependencies=[Depends(require_admin)])
+async def notify_test():
+    """Send a short test message to every configured channel."""
+    if not notify.channels():
+        raise HTTPException(400, "No notification channel configured (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID or ALERT_WEBHOOK_URL)")
+    return {"results": await notify.send_test()}
 
 
 @app.get("/api/graph")
-def get_graph(source: str = "all"):
-    alerts, _ = _alerts(source)
+def get_graph(source: str = "all", lang: str = "en"):
+    alerts, _ = _alerts(source, lang)
     return build_graph(alerts)
 
 
@@ -321,8 +344,10 @@ def list_signals(
     zone: Optional[str] = None,
     source: str = "all",
     q: Optional[str] = None,
+    lang: str = "en",
 ):
     sigs, _ = _signals(source)
+    sigs = [localize_signal(s, lang) for s in sigs]
     needle = (q or "").strip().lower()
     out = [
         s for s in sigs
@@ -367,6 +392,7 @@ class AnalyzeRequest(BaseModel):
     title: str = ""
     text: str = Field(min_length=3, max_length=8000)
     use_llm: bool = True
+    lang: str = "en"
 
 
 @app.post("/api/analyze", dependencies=[Depends(limit_analyze)])
@@ -374,13 +400,13 @@ def analyze_text(req: AnalyzeRequest):
     key = cache_key(req.title, req.text)
     cached = db.cache_get(key)  # identical text analysed before: instant, and spares the LLM quota
     if cached:
-        return {**cached, "cached": True}
+        return {**_localized_analysis(cached, req.lang), "cached": True}
     if config.DEMO_OFFLINE:
-        return {**analyze(req.title, req.text, use_llm=False), "offline": True}
+        return {**_localized_analysis(analyze(req.title, req.text, use_llm=False), req.lang), "offline": True}
     result = analyze(req.title, req.text, use_llm=req.use_llm)
     if result["analyzer"].startswith("llm:"):
         db.cache_put(key, req.title, req.text, result, iso(utcnow()))  # replayable in the offline demo
-    return result
+    return _localized_analysis(result, req.lang)
 
 
 @app.get("/api/analyze/samples")

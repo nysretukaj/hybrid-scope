@@ -5,7 +5,7 @@ import { useI18n } from '../lib/i18n'
 import { AnalyzerBadge, CategoryBadge, ReliabilityBar } from './ui'
 
 export default function SignalStream({ source, alertsCount, refreshKey }) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const [category, setCategory] = useState('')
   const [q, setQ] = useState('')
   const [data, setData] = useState({ total: 0, signals: [] })
@@ -13,11 +13,11 @@ export default function SignalStream({ source, alertsCount, refreshKey }) {
 
   useEffect(() => {
     let alive = true
-    api.signals({ category, q, source, limit: 400 })
+    api.signals({ category, q, source, limit: 400 }, lang)
       .then((d) => alive && (setData(d), setError(null)))
       .catch((e) => alive && setError(e.message))
     return () => { alive = false }
-  }, [category, q, source, refreshKey])
+  }, [category, q, source, refreshKey, lang])
 
   return (
     <div className="p-4">
@@ -65,9 +65,9 @@ export default function SignalStream({ source, alertsCount, refreshKey }) {
                     <div className="mt-0.5 text-[11px] text-slate-500">{[...(s.entities.actors || []), ...(s.entities.cves || [])].join(' · ')}</div>
                   )}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2 text-xs text-slate-400">{s.zone || <span className="text-slate-600">{t('s.unresolved')}</span>}</td>
+                <td className="whitespace-nowrap px-3 py-2 text-xs text-slate-400">{s.zone_label || s.zone || <span className="text-slate-600">{t('s.unresolved')}</span>}</td>
                 <td className="px-3 py-2 text-xs">
-                  <div className="text-slate-300">{s.source_name}</div>
+                  <div className="text-slate-300">{s.source_label || s.source_name}</div>
                   <ReliabilityBar value={s.source_reliability} />
                 </td>
                 <td className="px-3 py-2 font-mono text-xs text-slate-300">{s.severity.toFixed(2)}</td>

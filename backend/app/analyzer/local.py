@@ -7,6 +7,7 @@ handles more reliably than an LLM.
 import re
 
 from ..gazetteer import find_places, primary_place
+from ..localize import nlp_rationale
 
 CATEGORY_LABELS = {
     "disinformation": "Disinformation",
@@ -215,20 +216,14 @@ def analyze_local(title: str, text: str) -> dict:
         confidence += 0.05
     confidence = max(0.3, min(0.85, confidence))
 
-    if category == "other":
-        rationale = "Local NLP: no threat-domain indicators found; kept in the stream but excluded from alerts."
-    else:
-        rationale = f"Local NLP: classified as {CATEGORY_LABELS[category]} (matched: {', '.join(hits[category][:5])})."
-        if tags:
-            rationale += " Secondary: " + ", ".join(CATEGORY_LABELS[t] for t in tags) + "."
-        ups = [k for k, v in adjustments if v > 0]
-        downs = [k for k, v in adjustments if v < 0]
-        if ups:
-            rationale += f" Severity raised by: {', '.join(ups[:4])}."
-        if downs:
-            rationale += f" Severity lowered by: {', '.join(downs[:3])} (likely non-hostile)."
-        if not location:
-            rationale += " No known location resolved."
+    findings = {
+        "category": category,
+        "kws": hits.get(category, [])[:5] if category != "other" else [],
+        "tags": tags,
+        "ups": [k for k, v in adjustments if v > 0][:4] if category != "other" else [],
+        "downs": [k for k, v in adjustments if v < 0][:3] if category != "other" else [],
+        "noloc": not location,
+    }
 
     return {
         "category": category,
@@ -237,7 +232,8 @@ def analyze_local(title: str, text: str) -> dict:
         "confidence": round(confidence, 2),
         "entities": entities,
         "location": location,
-        "rationale": rationale,
+        "rationale": nlp_rationale(findings, "en"),
+        "i18n": {lang: {"rationale": nlp_rationale(findings, lang)} for lang in ("sq", "de")},
         "analyzer": "local-nlp",
         "keyword_scores": scores,
     }

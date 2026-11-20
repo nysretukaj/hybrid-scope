@@ -28,11 +28,12 @@ const SAMPLES = [
 ]
 
 export default function AnalyzePanel() {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const [samples, setSamples] = useState(SAMPLES)
   const [title, setTitle] = useState(SAMPLES[0].title)
   const [text, setText] = useState(SAMPLES[0].text)
   const [result, setResult] = useState(null)
+  const [lastRequest, setLastRequest] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
 
@@ -41,10 +42,24 @@ export default function AnalyzePanel() {
     api.samples().then((s) => s?.length && setSamples(s)).catch(() => {})
   }, [])
 
-  const run = async () => {
+  const request = async (body) => {
     setBusy(true); setError(null)
-    try { setResult(await api.analyze({ title, text })) } catch (e) { setError(e.message) } finally { setBusy(false) }
+    try {
+      setResult(await api.analyze(body, lang))
+      setLastRequest(body)
+    } catch (e) {
+      setError(e.status === 429 ? t('a.rateLimited') : e.message)
+    } finally {
+      setBusy(false)
+    }
   }
+  const run = () => request({ title, text })
+
+  // Switching language re-renders the last result in that language (served from the cache, no new AI call).
+  useEffect(() => {
+    if (lastRequest) request(lastRequest)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang])
 
   const maxKw = result?.keyword_scores ? Math.max(1, ...Object.values(result.keyword_scores)) : 1
 
@@ -80,7 +95,7 @@ export default function AnalyzePanel() {
               {result.offline && <span className="rounded px-1.5 py-0.5 text-[10px] text-amber-300 ring-1 ring-amber-500/30">{t('a.offlineLocal')}</span>}
             </div>
             <div className="grid grid-cols-3 gap-3">
-              {[[t('a.severity'), result.severity.toFixed(2)], [t('a.confidence'), pct(result.confidence)], [t('a.region'), result.location?.zone || '—']].map(([k, v]) => (
+              {[[t('a.severity'), result.severity.toFixed(2)], [t('a.confidence'), pct(result.confidence)], [t('a.region'), result.location?.zone_label || result.location?.zone || '—']].map(([k, v]) => (
                 <div key={k} className="rounded-lg bg-slate-950/60 p-3 ring-1 ring-slate-800">
                   <div className="text-[10px] uppercase tracking-widest text-slate-500">{k}</div>
                   <div className="mt-1 font-mono text-lg text-slate-100">{v}</div>
@@ -117,7 +132,7 @@ export default function AnalyzePanel() {
             <div className="space-y-2">
               {Object.entries(result.entities).filter(([, v]) => v?.length).map(([k, vals]) => (
                 <div key={k} className="flex flex-wrap items-center gap-1.5">
-                  <span className="w-24 text-[10px] uppercase tracking-widest text-slate-500">{k}</span>
+                  <span className="w-24 text-[10px] uppercase tracking-widest text-slate-500">{t(`ent.${k}`)}</span>
                   {vals.map((v) => <Chip key={v}>{v}</Chip>)}
                 </div>
               ))}
