@@ -11,10 +11,26 @@ export default function Filters({ filters, setFilters, zones }) {
   const [showMore, setMoreOpen] = useState(false)
   const set = (k, v) => setFilters((f) => ({ ...f, [k]: v }))
   const sources = [['all', t('f.all')], ['synthetic', t('f.scenario')], ['live', t('f.live')]]
-  const activeAdvanced = [filters.zone, filters.source !== 'all', filters.min_confidence > 0, filters.hybrid_only, filters.hide_dismissed]
-    .filter(Boolean).length
+  const active = [filters.hours, filters.category, filters.zone, filters.source !== 'all', filters.min_confidence > 0,
+    filters.hybrid_only, filters.hide_dismissed].filter(Boolean).length
+  // closed by default: only the search box and one "Filters" button are visible
   return (
     <div className="panel space-y-3 p-3">
+      <div className="flex gap-2">
+        <input
+          value={filters.q}
+          onChange={(e) => set('q', e.target.value)}
+          placeholder={t('f.search')}
+          className="min-w-0 flex-1 rounded-lg bg-slate-950/70 px-3 py-2 text-sm text-slate-200 ring-1 ring-slate-700 outline-none placeholder:text-slate-600 focus:ring-cyan-500/60"
+        />
+        <button onClick={() => setMoreOpen(!showMore)} aria-expanded={showMore}
+          className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-sm ring-1 ${showMore ? 'bg-slate-700 text-white ring-slate-500' : 'text-slate-300 ring-slate-700 hover:bg-slate-800'}`}>
+          ⚙ {t('f.toggle')}
+          {active > 0 && <span className="rounded-full bg-cyan-500/30 px-1.5 font-mono text-[10px] text-cyan-100">{active}</span>}
+        </button>
+      </div>
+
+      {showMore && <>
       <div className="flex items-center gap-2">
         <span className="text-[11px] text-slate-500">🕒 {t('f.time')}</span>
         <div className="flex flex-1 rounded-lg bg-slate-950/70 p-0.5 ring-1 ring-slate-700" role="group" aria-label={t('f.time')}>
@@ -26,12 +42,6 @@ export default function Filters({ filters, setFilters, zones }) {
           ))}
         </div>
       </div>
-      <input
-        value={filters.q}
-        onChange={(e) => set('q', e.target.value)}
-        placeholder={t('f.search')}
-        className="w-full rounded-lg bg-slate-950/70 px-3 py-2 text-sm text-slate-200 ring-1 ring-slate-700 outline-none placeholder:text-slate-600 focus:ring-cyan-500/60"
-      />
 
       <div className="flex flex-wrap gap-1.5">
         <button
@@ -56,16 +66,6 @@ export default function Filters({ filters, setFilters, zones }) {
         })}
       </div>
 
-      <button
-        onClick={() => setMoreOpen(!showMore)}
-        aria-expanded={showMore}
-        className="flex w-full items-center gap-2 text-[11px] text-slate-400 hover:text-slate-200"
-      >
-        <span>{showMore ? '▾' : '▸'} {t('f.more')}</span>
-        {activeAdvanced > 0 && <span className="rounded-full bg-cyan-500/20 px-1.5 font-mono text-[10px] text-cyan-200">{activeAdvanced}</span>}
-      </button>
-
-      {showMore && <>
       <div className="grid grid-cols-2 gap-2">
         <select
           value={filters.zone}

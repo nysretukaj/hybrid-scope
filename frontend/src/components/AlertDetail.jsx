@@ -8,6 +8,7 @@ import { useI18n } from '../lib/i18n'
 import BriefModal, { ttpUrl } from './BriefModal'
 import CorrelationTimeline from './CorrelationTimeline'
 import ReplayPanel from './ReplayPanel'
+import ThreatMap from './ThreatMap'
 import { AnalyzerBadge, CategoryBadge, Chip, Help, LevelBadge, ReliabilityBar, ScoreRing, SectionTitle } from './ui'
 
 /** The alert explained in two or three everyday sentences, for readers who are not analysts. */
@@ -78,8 +79,7 @@ function Assessment({ alert }) {
       sub: t('as.indep', { n: as.independent_sources }) + (as.duplicates ? ` · ${t('as.dups', { n: as.duplicates })}` : '') },
   ]
   return (
-    <div className="mt-4">
-      <SectionTitle>{t('as.title')}</SectionTitle>
+    <div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {tiles.map((x) => (
           <div key={x.key} className="rounded-lg bg-slate-900/50 px-3 py-2 ring-1 ring-slate-800">
@@ -178,14 +178,14 @@ function VerificationBar({ alert, onFeedback, notifyEnabled, onNotify, publicMod
   const fb = alert.feedback
 
   return (
-    <div className="mt-4 rounded-lg bg-slate-950/50 p-3 ring-1 ring-slate-800">
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <span className="flex items-center text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-          {t('v.title')}<Help term="verification" />
-        </span>
-        {fb?.note && <span className="text-xs italic text-slate-400">“{fb.note}”</span>}
-        {fb?.at && <span className="text-[11px] text-slate-600">{timeAgo(fb.at)}</span>}
-      </div>
+    <div>
+      <p className="mb-3 text-sm leading-relaxed text-slate-400">{t('h.verification')}</p>
+      {(fb?.note || fb?.at) && (
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          {fb?.note && <span className="text-xs italic text-slate-400">“{fb.note}”</span>}
+          {fb?.at && <span className="text-[11px] text-slate-600">{timeAgo(fb.at)}</span>}
+        </div>
+      )}
       <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('v.title')}>
         {VERIFICATION_ORDER.map((v) => {
           const active = v === current
@@ -341,103 +341,129 @@ function Evidence({ signal, active, links, canEdit, onReclassify }) {
   )
 }
 
-export default function AlertDetail({ alert, loading, source, notifyEnabled, onFeedback, onNotify, onReclassify, publicMode, aiEnabled }) {
+/** A section that opens with one tap: only its title shows until you need it. */
+function Section({ id, icon, title, badge, open, onToggle, children }) {
+  return (
+    <div className="overflow-hidden rounded-xl bg-slate-900/40 ring-1 ring-slate-800">
+      <button onClick={() => onToggle(id)} aria-expanded={open}
+        className="flex w-full items-center gap-3 px-4 py-3.5 text-left hover:bg-slate-800/40">
+        <span className="text-lg" aria-hidden>{icon}</span>
+        <span className="font-medium text-slate-100">{title}</span>
+        {badge != null && <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[11px] text-slate-300">{badge}</span>}
+        <span className={`ml-auto text-slate-500 transition-transform ${open ? 'rotate-90' : ''}`} aria-hidden>›</span>
+      </button>
+      {open && <div className="border-t border-slate-800 px-4 py-4">{children}</div>}
+    </div>
+  )
+}
+
+export default function AlertDetail({ alert, loading, source, notifyEnabled, onFeedback, onNotify, onReclassify, publicMode, aiEnabled, mapProps }) {
   const { t } = useI18n()
-  const [showTech, setTechOpen] = useState(false)
+  const [openSec, setOpenSec] = useState({})
   const [activeSignal, setActiveSignal] = useState(null)
   const [replayOpen, setReplayOpen] = useState(false)
   const [replayFrame, setReplayFrame] = useState(null)
   const [briefOpen, setBriefOpen] = useState(false)
   const onFrame = useCallback((f) => setReplayFrame(f), [])
+  const toggle = (id) => setOpenSec((s) => ({ ...s, [id]: !s[id] }))
 
   if (!alert) {
     return <div className="panel p-10 text-center text-slate-500">{loading ? t('d.loading') : t('d.select')}</div>
   }
 
+  // jump to one report: open the evidence section first, then scroll to it
   const selectSignal = (id) => {
     setActiveSignal(id)
-    document.getElementById(`ev-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setOpenSec((s) => ({ ...s, evidence: true }))
+    setTimeout(() => document.getElementById(`ev-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80)
   }
+  const verification = alert.verification || 'unverified'
 
   return (
-    <div className="panel p-4 sm:p-5">
-      <div className="flex flex-wrap items-start gap-4 sm:gap-5">
-        <ScoreRing score={alert.score} levelName={alert.level} size={76} />
-        <div className="w-full min-w-0 sm:w-auto sm:flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <LevelBadge value={alert.level} />
-            {alert.is_hybrid && <span className="flex items-center rounded-md bg-fuchsia-500/15 px-2 py-0.5 text-[10px] font-bold tracking-widest text-fuchsia-300 ring-1 ring-fuchsia-500/40">{t('d.hybrid')}<Help term="hybrid" /></span>}
-            {alert.synthetic && <span className="rounded-md bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300 ring-1 ring-amber-500/30">{t('d.exercise')}</span>}
-            <span className="flex items-center text-xs text-slate-500">{t('d.confidence')}&nbsp;<span className="font-mono text-slate-200">{pct(alert.confidence)}</span><Help term="confidence" /></span>
+    <div className="space-y-3">
+      <div className="panel p-4 sm:p-5">
+        <div className="flex items-start gap-4">
+          <ScoreRing score={alert.score} levelName={alert.level} size={72} />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <LevelBadge value={alert.level} />
+              {alert.is_hybrid && <span className="flex items-center rounded-md bg-fuchsia-500/15 px-2 py-0.5 text-[10px] font-bold tracking-widest text-fuchsia-300 ring-1 ring-fuchsia-500/40">{t('d.hybrid')}<Help term="hybrid" /></span>}
+              {alert.synthetic && <span className="rounded-md bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300 ring-1 ring-amber-500/30">{t('d.exercise')}</span>}
+            </div>
+            <h2 className="mt-2 text-lg font-semibold text-slate-50 sm:text-xl">{alert.title}</h2>
+            <div className="mt-1 text-xs text-slate-500">{timeAgo(alert.last_seen)} · {t('d.sigSrc', { s: alert.signal_count, src: alert.source_count })}</div>
           </div>
-          <h2 className="mt-2 text-lg font-semibold text-slate-50 sm:text-xl">{alert.title}</h2>
-          {showTech && <p className="mt-1 text-sm text-slate-400">{alert.summary}</p>}
-          <div className="mt-3"><Sequence sequence={alert.sequence} firstSeen={alert.first_seen} /></div>
         </div>
-        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:shrink-0 sm:flex-col">
+
+        <PlainSummary alert={alert} source={source} aiEnabled={aiEnabled} />
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
           <button
             onClick={() => setReplayOpen((o) => !o)}
-            className={`rounded-lg px-4 py-2 text-left text-sm font-medium ring-1 transition ${replayOpen ? 'bg-fuchsia-500/25 text-fuchsia-100 ring-fuchsia-400/60' : 'bg-fuchsia-500/10 text-fuchsia-200 ring-fuchsia-500/40 hover:bg-fuchsia-500/20'}`}
+            className={`rounded-lg px-4 py-2.5 text-left text-sm font-medium ring-1 transition ${replayOpen ? 'bg-fuchsia-500/25 text-fuchsia-100 ring-fuchsia-400/60' : 'bg-fuchsia-500/10 text-fuchsia-200 ring-fuchsia-500/40 hover:bg-fuchsia-500/20'}`}
           >
             ▶ {t('d.replay')}
             <span className="block text-[10px] font-normal opacity-70">{t('d.replaySub')}</span>
           </button>
-          <button onClick={() => setBriefOpen(true)} className="rounded-lg bg-slate-100 px-4 py-2 text-left text-sm font-semibold text-slate-900 hover:bg-white">
+          <button onClick={() => setBriefOpen(true)} className="rounded-lg bg-slate-100 px-4 py-2.5 text-left text-sm font-semibold text-slate-900 hover:bg-white">
             ▤ {t('d.brief')}
             <span className="block text-[10px] font-normal opacity-70">{t('d.briefSub')}</span>
           </button>
         </div>
+        {replayOpen && <ReplayPanel alertId={alert.id} source={source} onFrame={onFrame} onClose={() => setReplayOpen(false)} />}
       </div>
 
-      <PlainSummary alert={alert} source={source} aiEnabled={aiEnabled} />
+      <Section id="assessment" icon="📋" title={t('as.title')} open={!!openSec.assessment} onToggle={toggle}
+        badge={levelLabel(alert.assessment?.severity_level || alert.level)}>
+        <Assessment alert={alert} />
+      </Section>
 
-      <Assessment alert={alert} />
+      <Section id="verify" icon={VERIFICATION[verification].icon} title={t('v.title')} open={!!openSec.verify} onToggle={toggle}
+        badge={t(`v.${verification}`)}>
+        <VerificationBar alert={alert} onFeedback={onFeedback} notifyEnabled={notifyEnabled} onNotify={onNotify} publicMode={publicMode} />
+      </Section>
 
-      <VerificationBar alert={alert} onFeedback={onFeedback} notifyEnabled={notifyEnabled} onNotify={onNotify} publicMode={publicMode} />
-
-      {replayOpen && <ReplayPanel alertId={alert.id} source={source} onFrame={onFrame} onClose={() => setReplayOpen(false)} />}
-
-      <div className="mt-6 grid gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-3">
-          <SectionTitle right={<span className="text-[11px] text-slate-500">{t('d.links', { n: alert.links.length })}</span>}>{t('d.timeline')}</SectionTitle>
-          <CorrelationTimeline alert={alert} activeId={replayFrame?.signal_id || activeSignal} onSelectSignal={selectSignal} cutoff={replayOpen ? replayFrame?.t : null} />
-        </div>
-        {showTech && <div className="lg:col-span-2">
-          <ScoreBreakdown breakdown={alert.breakdown} score={alert.score} />
-        </div>}
-      </div>
-
-      <button onClick={() => setTechOpen(!showTech)} aria-expanded={showTech}
-        className="mt-6 w-full rounded-lg py-2 text-xs font-medium text-slate-400 ring-1 ring-slate-700 hover:bg-slate-800/50 hover:text-slate-200">
-        {showTech ? `▾ ${t('d.techHide')}` : `▸ ${t('d.techShow')}`}
-      </button>
-
-      {showTech && <Ttps ttps={alert.ttps} onJump={selectSignal} />}
-
-      {showTech && alert.shared_entities.length > 0 && (
-        <div className="mt-6">
-          <SectionTitle>{t('d.linking')}</SectionTitle>
-          <div className="flex flex-wrap gap-2">
-            {alert.shared_entities.slice(0, 14).map((e) => (
-              <span key={e.type + e.name} title={t(`et.${e.type}`)} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800/70 px-2.5 py-1 text-xs text-slate-200 ring-1 ring-slate-700">
-                <span className="text-slate-500">{ENTITY_ICON[e.type] || '•'}</span>
-                {e.name}
-                <span className="rounded bg-slate-950 px-1 font-mono text-[10px] text-slate-400">×{e.count}</span>
-              </span>
-            ))}
-          </div>
-        </div>
+      {alert.centroid && (
+        <Section id="map" icon="🗺️" title={t('d.where')} open={!!openSec.map} onToggle={toggle} badge={alert.zone_label || alert.zone}>
+          <ThreatMap alerts={[alert]} selectedId={alert.id} detail={alert} onSelect={() => {}} compact {...mapProps} />
+        </Section>
       )}
 
-      <div className="mt-6">
-        <SectionTitle right={<span className="text-[11px] text-slate-500">{t('d.sigSrc', { s: alert.signal_count, src: alert.source_count })}</span>}>{t('d.evidence')}</SectionTitle>
+      <Section id="evidence" icon="📰" title={t('d.proofs')} open={!!openSec.evidence} onToggle={toggle} badge={alert.signal_count}>
         <div className="space-y-2">
           {[...alert.signals].reverse().map((s) => (
             <Evidence key={s.id} signal={s} active={s.id === activeSignal} links={alert.links}
               canEdit={!publicMode} onReclassify={onReclassify} />
           ))}
         </div>
-      </div>
+      </Section>
+
+      <Section id="timeline" icon="🕒" title={t('d.timeline')} open={!!openSec.timeline || replayOpen} onToggle={toggle}
+        badge={t('d.links', { n: alert.links.length })}>
+        <CorrelationTimeline alert={alert} activeId={replayFrame?.signal_id || activeSignal} onSelectSignal={selectSignal} cutoff={replayOpen ? replayFrame?.t : null} />
+      </Section>
+
+      <Section id="tech" icon="⚙️" title={t('d.tech')} open={!!openSec.tech} onToggle={toggle}>
+        <p className="text-sm text-slate-400">{alert.summary}</p>
+        <div className="mt-3"><Sequence sequence={alert.sequence} firstSeen={alert.first_seen} /></div>
+        <div className="mt-2 text-xs text-slate-500">{t('d.confidence')} <span className="font-mono text-slate-300">{pct(alert.confidence)}</span></div>
+        <div className="mt-5"><ScoreBreakdown breakdown={alert.breakdown} score={alert.score} /></div>
+        <Ttps ttps={alert.ttps} onJump={selectSignal} />
+        {alert.shared_entities.length > 0 && (
+          <div className="mt-6">
+            <SectionTitle>{t('d.linking')}</SectionTitle>
+            <div className="flex flex-wrap gap-2">
+              {alert.shared_entities.slice(0, 14).map((e) => (
+                <span key={e.type + e.name} title={t(`et.${e.type}`)} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800/70 px-2.5 py-1 text-xs text-slate-200 ring-1 ring-slate-700">
+                  <span className="text-slate-500">{ENTITY_ICON[e.type] || '•'}</span>
+                  {e.name}
+                  <span className="rounded bg-slate-950 px-1 font-mono text-[10px] text-slate-400">×{e.count}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </Section>
 
       {briefOpen && <BriefModal alertId={alert.id} source={source} onClose={() => setBriefOpen(false)} />}
     </div>

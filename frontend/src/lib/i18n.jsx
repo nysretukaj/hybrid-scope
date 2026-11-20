@@ -207,7 +207,7 @@ const EXTRA = {
     'ob.title': 'What is this page?', 'ob.close': 'Got it',
     'ob.what': 'HybridScope reads news from the internet automatically and shows you where there is a risk of attack: fake news, hacking or sabotage. When several of these happen together in one place, it warns you.',
     'ob.1': 'Look at the coloured bar at the top: it tells you if anything is urgent. Press “Open” to read it.',
-    'ob.2': 'Click a situation in the list or a dot on the map. Under “What does this mean?” it is explained in plain words.',
+    'ob.2': 'Tap a box on the start page (Alerts, Map…), then a situation. Under “What does this mean?” it is explained in plain words; more details open with one tap.',
     'ob.3': 'Colours: red = act now, orange = prepare, yellow = keep watching, grey = for information only.',
     'h.hybrid': 'Hybrid: several kinds of threat (fake news, cyber attacks, damage to infrastructure, physical action) that appear to be connected.',
     'h.confidence': 'Confidence: how sure the system is. It grows when several independent sources report the same thing.',
@@ -242,7 +242,7 @@ const EXTRA = {
     'ob.title': 'Çfarë është kjo faqe?', 'ob.close': 'E kuptova',
     'ob.what': 'HybridScope lexon automatikisht lajmet nga interneti dhe ju tregon ku ka rrezik nga sulme: lajme të rreme, hakime apo sabotime. Kur disa prej tyre ndodhin bashkë në të njëjtin vend, ju paralajmëron.',
     'ob.1': 'Shikoni shiritin me ngjyrë lart: ai ju thotë nëse ka diçka urgjente. Shtypni “Hape” për ta lexuar.',
-    'ob.2': 'Klikoni një situatë në listë ose një pikë në hartë. Te “Çfarë do të thotë kjo?” shpjegohet me fjalë të thjeshta.',
+    'ob.2': 'Prekni një kuti në faqen e parë (Alarmet, Harta…), pastaj një situatë. Te “Çfarë do të thotë kjo?” shpjegohet me fjalë të thjeshta; detajet e tjera hapen me një prekje.',
     'ob.3': 'Ngjyrat: e kuqe = vepro tani, portokalli = përgatitu, e verdhë = vazhdo ta ndjekësh, gri = vetëm për informim.',
     'h.hybrid': 'Hibrid: disa lloje kërcënimesh (lajme të rreme, sulme kibernetike, dëmtim i infrastrukturës, veprime fizike) që duket se janë të lidhura.',
     'h.confidence': 'Besueshmëria: sa i sigurt është sistemi. Rritet kur disa burime të pavarura raportojnë të njëjtën gjë.',
@@ -277,7 +277,7 @@ const EXTRA = {
     'ob.title': 'Was ist diese Seite?', 'ob.close': 'Verstanden',
     'ob.what': 'HybridScope liest automatisch Nachrichten aus dem Internet und zeigt, wo Angriffsgefahr besteht: Falschmeldungen, Hacking oder Sabotage. Treten mehrere davon zusammen an einem Ort auf, warnt es Sie.',
     'ob.1': 'Achten Sie auf den farbigen Balken oben: er sagt, ob etwas dringend ist. Mit „Öffnen“ lesen Sie es.',
-    'ob.2': 'Klicken Sie auf eine Lage in der Liste oder einen Punkt auf der Karte. Unter „Was bedeutet das?“ steht es in einfachen Worten.',
+    'ob.2': 'Tippen Sie auf der Startseite auf ein Feld (Warnungen, Karte…), dann auf eine Lage. Unter „Was bedeutet das?“ steht es in einfachen Worten; weitere Details öffnen sich mit einem Tipp.',
     'ob.3': 'Farben: Rot = jetzt handeln, Orange = vorbereiten, Gelb = weiter beobachten, Grau = nur zur Information.',
     'h.hybrid': 'Hybrid: mehrere Bedrohungsarten (Falschmeldungen, Cyberangriffe, Schäden an Infrastruktur, physische Aktionen), die zusammenzuhängen scheinen.',
     'h.confidence': 'Konfidenz: wie sicher das System ist. Sie steigt, wenn mehrere unabhängige Quellen dasselbe melden.',
@@ -443,6 +443,56 @@ const AUDIT = {
   },
 }
 for (const l of Object.keys(AUDIT)) Object.assign(D[l], AUDIT[l])
+
+// Menu-based navigation: start page tiles, page names, help page.
+const MENU = {
+  en: {
+    'page.back': 'Back', 'page.home': 'Start', 'page.alerts': 'Alerts', 'page.map': 'Map', 'page.stats': 'Statistics',
+    'page.news': 'News feed', 'page.analyze': 'Check a text', 'page.network': 'Connections', 'page.help': 'How does it work?',
+    'page.alert': 'Alert', 'page.mapHint': 'Tap a dot to open that alert.',
+    'page.alertGone': 'This alert is no longer active (it may be older than 10 days or merged into another one).',
+    'page.toAlerts': 'See all alerts',
+    'home.alertsSub': '{n} active · {c} critical', 'home.mapSub': 'Where things are happening',
+    'home.statsSub': 'Numbers and trends', 'home.newsSub': '{n} collected reports', 'home.analyzeSub': 'Paste a news text and check it',
+    'home.networkSub': 'How the events are linked', 'home.helpSub': 'What this system does and what the words mean',
+    'help.words': 'Words used on the pages',
+    'help.term.hybrid': 'Hybrid', 'help.term.score': 'Risk score', 'help.term.confidence': 'Confidence',
+    'help.term.verification': 'Verification status', 'help.term.evidence': 'Evidence', 'help.term.signal': 'Report (signal)',
+    'help.term.sources': 'Sources', 'help.term.replay': 'Replay', 'help.term.brief': 'Intel brief',
+    'd.where': 'Where it happened', 'd.tech': 'Technical details', 'd.proofs': 'Evidence (the reports)',
+  },
+  sq: {
+    'page.back': 'Kthehu', 'page.home': 'Fillimi', 'page.alerts': 'Alarmet', 'page.map': 'Harta', 'page.stats': 'Statistikat',
+    'page.news': 'Lajmet', 'page.analyze': 'Kontrollo një tekst', 'page.network': 'Lidhjet', 'page.help': 'Si funksionon?',
+    'page.alert': 'Alarmi', 'page.mapHint': 'Prekni një pikë për të hapur atë alarm.',
+    'page.alertGone': 'Ky alarm nuk është më aktiv (mund të jetë më i vjetër se 10 ditë ose u bashkua me një tjetër).',
+    'page.toAlerts': 'Shiko të gjitha alarmet',
+    'home.alertsSub': '{n} aktive · {c} kritike', 'home.mapSub': 'Ku po ndodhin ngjarjet',
+    'home.statsSub': 'Shifrat dhe ecuria', 'home.newsSub': '{n} raportime të mbledhura', 'home.analyzeSub': 'Ngjit një lajm dhe kontrolloje',
+    'home.networkSub': 'Si lidhen ngjarjet mes tyre', 'home.helpSub': 'Çfarë bën ky sistem dhe çfarë do të thonë fjalët',
+    'help.words': 'Fjalët që përdoren në faqe',
+    'help.term.hybrid': 'Hibrid', 'help.term.score': 'Nota e rrezikut', 'help.term.confidence': 'Besueshmëria',
+    'help.term.verification': 'Statusi i verifikimit', 'help.term.evidence': 'Provat', 'help.term.signal': 'Raportim (sinjal)',
+    'help.term.sources': 'Burimet', 'help.term.replay': 'Riluaj', 'help.term.brief': 'Raport inteligjence',
+    'd.where': 'Ku ndodhi', 'd.tech': 'Detajet teknike', 'd.proofs': 'Provat (raportimet)',
+  },
+  de: {
+    'page.back': 'Zurück', 'page.home': 'Start', 'page.alerts': 'Warnungen', 'page.map': 'Karte', 'page.stats': 'Statistik',
+    'page.news': 'Meldungen', 'page.analyze': 'Text prüfen', 'page.network': 'Verbindungen', 'page.help': 'Wie funktioniert es?',
+    'page.alert': 'Warnung', 'page.mapHint': 'Tippen Sie auf einen Punkt, um die Warnung zu öffnen.',
+    'page.alertGone': 'Diese Warnung ist nicht mehr aktiv (älter als 10 Tage oder mit einer anderen zusammengeführt).',
+    'page.toAlerts': 'Alle Warnungen ansehen',
+    'home.alertsSub': '{n} aktiv · {c} kritisch', 'home.mapSub': 'Wo etwas passiert',
+    'home.statsSub': 'Zahlen und Verlauf', 'home.newsSub': '{n} gesammelte Meldungen', 'home.analyzeSub': 'Nachrichtentext einfügen und prüfen',
+    'home.networkSub': 'Wie die Ereignisse zusammenhängen', 'home.helpSub': 'Was das System tut und was die Begriffe bedeuten',
+    'help.words': 'Begriffe auf den Seiten',
+    'help.term.hybrid': 'Hybrid', 'help.term.score': 'Risikowert', 'help.term.confidence': 'Konfidenz',
+    'help.term.verification': 'Prüfstatus', 'help.term.evidence': 'Belege', 'help.term.signal': 'Meldung (Signal)',
+    'help.term.sources': 'Quellen', 'help.term.replay': 'Wiedergabe', 'help.term.brief': 'Lagebericht',
+    'd.where': 'Wo es passiert ist', 'd.tech': 'Technische Details', 'd.proofs': 'Belege (die Meldungen)',
+  },
+}
+for (const l of Object.keys(MENU)) Object.assign(D[l], MENU[l])
 
 const LangContext = createContext({ lang: 'en', setLang: () => {}, t: (k) => k })
 
