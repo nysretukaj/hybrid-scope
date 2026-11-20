@@ -7,6 +7,7 @@ from datetime import datetime
 from statistics import mean
 
 from .config import RECENCY_HALF_LIFE_HOURS
+from .i18n import tr
 from .normalize import parse_iso
 
 WEIGHTS = {"severity": 0.35, "hybrid": 0.25, "corroboration": 0.15, "recency": 0.15, "reliability": 0.10}
@@ -57,25 +58,25 @@ def score_alert(signals: list[dict], categories: list[str], is_hybrid: bool, cor
     rel = mean(s["source_reliability"] for s in signals)
     n_cats = len(categories) if is_hybrid else 1
 
+    # (value, explanation key, explanation parameters) - the text is built per language in localize.py
     components = {
-        "severity": (0.6 * max(sev) + 0.4 * mean(sev),
-                     f"Peak severity {max(sev):.2f}, mean {mean(sev):.2f} across {len(signals)} signal(s)"),
-        "hybrid": ((n_cats - 1) / 3,
-                   f"{len(categories)} linked threat domain(s)" if is_hybrid else "Single threat domain - no cross-domain link"),
-        "corroboration": (min(1.0, (corroborating_sources - 1) / 4),
-                          f"{corroborating_sources} independent source(s) share actors, narratives or infrastructure"),
-        "recency": (recency_weight(latest_age),
-                    f"Latest signal {latest_age:.0f}h ago (half-life {RECENCY_HALF_LIFE_HOURS:.0f}h)"),
-        "reliability": (rel, f"Mean source reliability {rel:.2f}"),
+        "severity": (0.6 * max(sev) + 0.4 * mean(sev), "ex.severity",
+                     {"max": f"{max(sev):.2f}", "mean": f"{mean(sev):.2f}", "n": len(signals)}),
+        "hybrid": ((n_cats - 1) / 3, "ex.hybrid.yes" if is_hybrid else "ex.hybrid.no", {"n": len(categories)}),
+        "corroboration": (min(1.0, (corroborating_sources - 1) / 4), "ex.corroboration", {"k": corroborating_sources}),
+        "recency": (recency_weight(latest_age), "ex.recency",
+                    {"h": f"{latest_age:.0f}", "hl": f"{RECENCY_HALF_LIFE_HOURS:.0f}"}),
+        "reliability": (rel, "ex.reliability", {"r": f"{rel:.2f}"}),
     }
 
     breakdown, total = [], 0.0
     for key, weight in WEIGHTS.items():
-        value, explanation = components[key]
+        value, ex_key, ex_params = components[key]
         points = 100 * weight * value
         total += points
         breakdown.append({
             "key": key, "label": LABELS[key], "weight": weight, "value": round(value, 3),
-            "points": round(points, 1), "max_points": round(100 * weight, 1), "explanation": explanation,
+            "points": round(points, 1), "max_points": round(100 * weight, 1),
+            "explanation": tr(ex_key, "en", **ex_params), "ex_key": ex_key, "ex_params": ex_params,
         })
     return round(total, 1), breakdown

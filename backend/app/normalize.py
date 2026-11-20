@@ -59,4 +59,5 @@ def build_signal(
         "analyzer": analysis.get("analyzer", "local-nlp"),
         "rationale": analysis.get("rationale"),
         "synthetic": synthetic,
+        "i18n": analysis.get("i18n") or {},
     }

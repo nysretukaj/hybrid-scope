@@ -122,6 +122,7 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 ALERT_WEBHOOK_URL = os.getenv("ALERT_WEBHOOK_URL", "")
 NOTIFY_MIN_LEVEL = os.getenv("NOTIFY_MIN_LEVEL", "CRITICAL")
+NOTIFY_LANG = os.getenv("NOTIFY_LANG", "sq") if os.getenv("NOTIFY_LANG", "sq") in ("en", "sq", "de") else "en"
 PUBLIC_URL = os.getenv("PUBLIC_URL", "").rstrip("/")
 
 

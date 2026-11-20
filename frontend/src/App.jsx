@@ -3,7 +3,8 @@ import AlertDetail from './components/AlertDetail'
 import AlertList from './components/AlertList'
 import AnalyzePanel from './components/AnalyzePanel'
 import Filters from './components/Filters'
-import Header from './components/Header'
+import Header, { BottomNav } from './components/Header'
+import { Onboarding, StatusBanner } from './components/StatusBanner'
 import KpiBar from './components/KpiBar'
 import NetworkGraph from './components/NetworkGraph'
 import SignalStream from './components/SignalStream'
@@ -19,7 +20,7 @@ function hashAlert() {
 }
 
 export default function App() {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const [view, setView] = useState('board')
   const [filters, setFilters] = useState({ q: '', category: '', zone: '', source: 'all', min_confidence: 0, hybrid_only: false, hide_dismissed: false })
   const [data, setData] = useState({ alerts: [], zones: [], total: 0 })
@@ -35,7 +36,7 @@ export default function App() {
 
   const refresh = useCallback(async () => {
     try {
-      const [a, s, h] = await Promise.all([api.alerts(filters), api.stats(filters.source), api.health()])
+      const [a, s, h] = await Promise.all([api.alerts(filters, lang), api.stats(filters.source), api.health()])
       setData(a)
       setStats(s)
       setHealth(h)
@@ -45,7 +46,7 @@ export default function App() {
     } catch (e) {
       setError(e.message)
     }
-  }, [filters])
+  }, [filters, lang])
 
   const enriching = !!health?.llm?.enrich?.running
   useEffect(() => {
@@ -59,12 +60,12 @@ export default function App() {
     if (!selectedId) { setDetail(null); return }
     let alive = true
     setDetailLoading(true)
-    api.alert(selectedId, filters.source)
+    api.alert(selectedId, filters.source, lang)
       .then((d) => alive && setDetail(d))
       .catch(() => alive && setDetail(null))
       .finally(() => alive && setDetailLoading(false))
     return () => { alive = false }
-  }, [selectedId, filters.source, tick])
+  }, [selectedId, filters.source, tick, lang])
 
   useEffect(() => {
     if (selectedId) window.history.replaceState(null, '', `#alert=${selectedId}`)
@@ -138,20 +139,44 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  // On phones the details sit below the list, so bring them into view when an alert is chosen.
+  const selectAlert = (id) => {
+    setSelectedId(id)
+    if (window.innerWidth < 1024) {
+      setTimeout(() => document.getElementById('alert-detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150)
+    }
+  }
+
+  const openFromBanner = (id) => {
+    setSelectedId(id)
+    setTimeout(() => document.getElementById('alert-detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150)
+  }
+
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="has-bottom-nav flex min-h-screen flex-col">
       <Header view={view} setView={setView} health={health} busy={busy} onIngest={onIngest} onReset={onReset} />
       {error && <div className="mx-4 mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300 ring-1 ring-red-500/30">{t('t.backend', { e: error })}</div>}
       <KpiBar stats={stats} />
 
       {view === 'board' && (
-        <main className="grid flex-1 grid-cols-12 gap-4 p-4">
-          <section className="col-span-12 flex flex-col gap-3 lg:sticky lg:top-[76px] lg:col-span-4 lg:h-[calc(100vh-92px)] xl:col-span-3">
-            <Filters filters={filters} setFilters={setFilters} zones={data.zones} />
-            <AlertList alerts={data.alerts} total={data.total} selectedId={selectedId} onSelect={setSelectedId} />
+        <div className="space-y-3 px-3 pt-3 sm:px-4">
+          <StatusBanner alerts={data.alerts} onOpen={openFromBanner} />
+          <Onboarding />
+        </div>
+      )}
+
+      {view === 'board' && (
+        // Phone order: map → list → details. Desktop: list on the left, map above details on the right.
+        <main className="grid flex-1 grid-cols-1 items-start gap-4 p-3 sm:p-4 lg:grid-cols-12">
+          <section className="min-w-0 lg:col-span-8 lg:col-start-5 lg:row-start-1 xl:col-span-9 xl:col-start-4">
+            <ThreatMap alerts={data.alerts} selectedId={selectedId} detail={detail} onSelect={selectAlert}
+              offline={health ? !!health.offline : null} updatedAt={data.generated_at} />
           </section>
-          <section className="col-span-12 flex min-w-0 flex-col gap-4 lg:col-span-8 xl:col-span-9">
-            <ThreatMap alerts={data.alerts} selectedId={selectedId} detail={detail} onSelect={setSelectedId} offline={health ? !!health.offline : null} />
+          <section className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-[76px] lg:col-span-4 lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:h-[calc(100vh-92px)] xl:col-span-3">
+            <Filters filters={filters} setFilters={setFilters} zones={data.zones} />
+            <AlertList alerts={data.alerts} total={data.total} selectedId={selectedId} onSelect={selectAlert} />
+          </section>
+          <section id="alert-detail" className="min-w-0 scroll-mt-3 lg:col-span-8 lg:col-start-5 lg:row-start-2 lg:scroll-mt-24 xl:col-span-9 xl:col-start-4">
             <AlertDetail
               key={detail?.id}
               alert={detail}
@@ -170,8 +195,10 @@ export default function App() {
       {view === 'signals' && <SignalStream source={filters.source} alertsCount={data.total} refreshKey={tick} />}
       {view === 'analyze' && <AnalyzePanel />}
 
+      <BottomNav view={view} setView={setView} />
+
       {toast && (
-        <div className={`fixed bottom-4 right-4 z-[3000] max-w-md rounded-lg px-4 py-3 text-sm shadow-xl ring-1 ${toast.kind === 'err' ? 'bg-red-950 text-red-200 ring-red-500/40' : toast.kind === 'warn' ? 'bg-amber-950 text-amber-100 ring-amber-500/40' : 'bg-slate-900 text-slate-100 ring-slate-600'}`}>
+        <div className={`fixed bottom-20 left-3 right-3 z-[3000] sm:left-auto sm:right-4 lg:bottom-4 max-w-md rounded-lg px-4 py-3 text-sm shadow-xl ring-1 ${toast.kind === 'err' ? 'bg-red-950 text-red-200 ring-red-500/40' : toast.kind === 'warn' ? 'bg-amber-950 text-amber-100 ring-amber-500/40' : 'bg-slate-900 text-slate-100 ring-slate-600'}`}>
           {toast.msg}
         </div>
       )}

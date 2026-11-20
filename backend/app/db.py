@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS signals (
     confidence REAL NOT NULL,
     analyzer TEXT NOT NULL,
     rationale TEXT,
-    synthetic INTEGER NOT NULL DEFAULT 0
+    synthetic INTEGER NOT NULL DEFAULT 0,
+    i18n TEXT NOT NULL DEFAULT '{}'     -- {"sq": {"title", "text", "rationale"}, "de": {...}}
 );
 CREATE INDEX IF NOT EXISTS idx_signals_ts ON signals(timestamp);
 CREATE TABLE IF NOT EXISTS alert_feedback (
@@ -53,7 +54,7 @@ CREATE TABLE IF NOT EXISTS analyze_cache (
 COLUMNS = [
     "id", "source_name", "source_type", "source_reliability", "url", "title", "text", "timestamp",
     "ingested_at", "zone", "country", "lat", "lon", "entities", "category", "tags", "severity",
-    "confidence", "analyzer", "rationale", "synthetic",
+    "confidence", "analyzer", "rationale", "synthetic", "i18n",
 ]
 
 
@@ -72,6 +73,10 @@ def get_conn():
 def init_db() -> None:
     with get_conn() as conn:
         conn.executescript(SCHEMA)
+        # migrate databases created before translations were stored per signal
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(signals)")}
+        if "i18n" not in cols:
+            conn.execute("ALTER TABLE signals ADD COLUMN i18n TEXT NOT NULL DEFAULT '{}'")
 
 
 def _to_row(sig: dict) -> tuple:
@@ -79,6 +84,7 @@ def _to_row(sig: dict) -> tuple:
     row["entities"] = json.dumps(sig.get("entities") or {}, ensure_ascii=False)
     row["tags"] = json.dumps(sig.get("tags") or [])
     row["synthetic"] = 1 if sig.get("synthetic") else 0
+    row["i18n"] = json.dumps(sig.get("i18n") or {}, ensure_ascii=False)
     return tuple(row.get(c) for c in COLUMNS)
 
 
@@ -87,6 +93,7 @@ def _from_row(row: sqlite3.Row) -> dict:
     d["entities"] = json.loads(d["entities"])
     d["tags"] = json.loads(d["tags"])
     d["synthetic"] = bool(d["synthetic"])
+    d["i18n"] = json.loads(d.get("i18n") or "{}")
     return d
 
 
@@ -150,12 +157,20 @@ def fetch_unenriched_live(limit: int) -> list[str]:
 
 def update_analysis(signal_id: str, analysis: dict) -> None:
     with get_conn() as conn:
+        row = conn.execute("SELECT i18n FROM signals WHERE id = ?", (signal_id,)).fetchone()
+        i18n = json.loads(row[0]) if row and row[0] else {}
+        # the new rationale replaces the old one in every language; other translated fields are kept
+        for lang in ("sq", "de"):
+            i18n.setdefault(lang, {}).pop("rationale", None)
+        for lang, fields in (analysis.get("i18n") or {}).items():
+            i18n.setdefault(lang, {}).update(fields)
         conn.execute(
             "UPDATE signals SET category = ?, tags = ?, severity = ?, confidence = ?, analyzer = ?, rationale = ?, "
-            "entities = ? WHERE id = ?",
+            "entities = ?, i18n = ? WHERE id = ?",
             (analysis["category"], json.dumps(analysis.get("tags") or []), round(float(analysis["severity"]), 2),
              round(float(analysis["confidence"]), 2), analysis["analyzer"], analysis.get("rationale"),
-             json.dumps(analysis.get("entities") or {}, ensure_ascii=False), signal_id),
+             json.dumps(analysis.get("entities") or {}, ensure_ascii=False),
+             json.dumps({k: v for k, v in i18n.items() if v}, ensure_ascii=False), signal_id),
         )
 
 

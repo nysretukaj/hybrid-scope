@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { setFormatLang } from './format'
 
 export const LANGS = [
   ['en', 'EN'],
@@ -45,6 +46,12 @@ const D = {
     'a.baseline': 'Baseline: offline keyword NLP', 'a.agree': 'same domain as the LLM', 'a.disagree': 'the LLM chose a different domain',
     'hdr.aiUpgrading': 'AI upgrading signals {done}/{n}',
     'hdr.offline': 'OFFLINE DEMO', 'm.offlineMap': 'offline map',
+    'ui.risk': 'RISK', 'ui.hybrid': 'HYBRID', 'ui.live': 'LIVE', 'ui.reliability': 'Source reliability {n}%',
+    'ui.sevConf': 'severity {s} · confidence {c}', 'ui.sevRel': 'severity {s} · reliability {r}',
+    'ui.priority': 'Signal priority = severity × source reliability × recency',
+    'ent.actors': 'Actors', 'ent.orgs': 'Organisations', 'ent.technologies': 'Technologies', 'ent.cves': 'CVEs',
+    'ent.narratives': 'Narratives', 'ent.locations': 'Places',
+    'a.rateLimited': 'Public demo limit reached - please wait a minute and try again.',
     'd.publicReadOnly': 'Public demo: analyst actions (confirm, false positive, send alert) are disabled here. Everything else, including Replay and the intel brief, works.',
     't.cooldown': 'Sources were fetched moments ago - showing that run (public demo limit).',
     'a.cached': 'cached AI result', 'a.offlineLocal': 'offline: local NLP only', 'a.cachedSample': 'AI answer cached for the offline demo',
@@ -98,6 +105,12 @@ const D = {
     'a.baseline': 'Krahasimi: NLP lokal me fjalë kyçe', 'a.agree': 'i njëjti domen si LLM', 'a.disagree': 'LLM zgjodhi domen tjetër',
     'hdr.aiUpgrading': 'AI po përmirëson sinjalet {done}/{n}',
     'hdr.offline': 'DEMO OFFLINE', 'm.offlineMap': 'hartë offline',
+    'ui.risk': 'RREZIKU', 'ui.hybrid': 'HIBRID', 'ui.live': 'DIREKT', 'ui.reliability': 'Besueshmëria e burimit {n}%',
+    'ui.sevConf': 'rëndësia {s} · besueshmëria {c}', 'ui.sevRel': 'rëndësia {s} · besueshmëria e burimit {r}',
+    'ui.priority': 'Përparësia e sinjalit = rëndësia × besueshmëria e burimit × aktualiteti',
+    'ent.actors': 'Aktorë', 'ent.orgs': 'Organizata', 'ent.technologies': 'Teknologji', 'ent.cves': 'CVE',
+    'ent.narratives': 'Narrativa', 'ent.locations': 'Vende',
+    'a.rateLimited': 'U arrit kufiri i demos publike - prit një minutë dhe provo përsëri.',
     'd.publicReadOnly': 'Demo publike: veprimet e analistit (konfirmo, alarm i rremë, dërgo alarmin) janë të çaktivizuara këtu. Gjithçka tjetër, përfshirë Riluajtjen dhe raportin, funksionon.',
     't.cooldown': 'Burimet u mblodhën para pak çastesh - po shfaqet ai ekzekutim (kufi i demos publike).',
     'a.cached': 'rezultat AI i ruajtur', 'a.offlineLocal': 'offline: vetëm NLP lokal', 'a.cachedSample': 'përgjigjja e AI-së është ruajtur për demon offline',
@@ -151,6 +164,12 @@ const D = {
     'a.baseline': 'Vergleich: Offline-Schlüsselwort-NLP', 'a.agree': 'gleiche Domäne wie das LLM', 'a.disagree': 'das LLM wählte eine andere Domäne',
     'hdr.aiUpgrading': 'KI wertet Signale auf {done}/{n}',
     'hdr.offline': 'OFFLINE-DEMO', 'm.offlineMap': 'Offline-Karte',
+    'ui.risk': 'RISIKO', 'ui.hybrid': 'HYBRID', 'ui.live': 'LIVE', 'ui.reliability': 'Quellenzuverlässigkeit {n}%',
+    'ui.sevConf': 'Schwere {s} · Konfidenz {c}', 'ui.sevRel': 'Schwere {s} · Zuverlässigkeit {r}',
+    'ui.priority': 'Signalpriorität = Schwere × Quellenzuverlässigkeit × Aktualität',
+    'ent.actors': 'Akteure', 'ent.orgs': 'Organisationen', 'ent.technologies': 'Technologien', 'ent.cves': 'CVEs',
+    'ent.narratives': 'Narrative', 'ent.locations': 'Orte',
+    'a.rateLimited': 'Limit der öffentlichen Demo erreicht - bitte eine Minute warten und erneut versuchen.',
     'd.publicReadOnly': 'Öffentliche Demo: Analystenaktionen (bestätigen, Fehlalarm, Warnung senden) sind hier deaktiviert. Alles andere, auch Wiedergabe und Lagebericht, funktioniert.',
     't.cooldown': 'Die Quellen wurden gerade erst abgerufen - dieser Lauf wird angezeigt (Limit der öffentlichen Demo).',
     'a.cached': 'gespeichertes KI-Ergebnis', 'a.offlineLocal': 'offline: nur lokales NLP', 'a.cachedSample': 'KI-Antwort für die Offline-Demo gespeichert',
@@ -168,30 +187,142 @@ const D = {
   },
 }
 
-const LangContext = createContext({ lang: 'en', setLang: () => {}, t: (k) => k })
+// Plain-language help, map controls and mobile navigation (added for non-technical users).
+const EXTRA = {
+  en: {
+    'nav.board': 'Alerts', 'nav.network': 'Network', 'nav.signals': 'Feed', 'nav.analyze': 'Analyze',
+    'mode.simple': 'Simple', 'mode.expert': 'Expert', 'mode.tip': 'Simple view hides technical details',
+    'st.critical': '{n} situation(s) need attention now', 'st.high': 'No critical situation, {n} to prepare for',
+    'st.calm': 'Calm: no urgent situation right now', 'st.top': 'Most urgent: {zone}', 'st.open': 'Open',
+    'lv.CRITICAL': 'Act now', 'lv.HIGH': 'Prepare a response', 'lv.MEDIUM': 'Keep watching', 'lv.LOW': 'For information',
+    'pl.title': 'What does this mean?',
+    'pl.hybrid': '{n} different kinds of incidents in {zone} ({cats}) seem to be part of one coordinated attack.',
+    'pl.single': 'Reports of {cat} activity in {zone}. No link to other kinds of incidents has been found.',
+    'pl.multi': 'Several kinds of incidents in {zone}, but no evidence yet that they are connected.',
+    'pl.level.CRITICAL': 'The risk is critical: alert the responsible teams now.',
+    'pl.level.HIGH': 'The risk is high: prepare a response and watch closely.',
+    'pl.level.MEDIUM': 'The risk is moderate: keep watching for new reports.',
+    'pl.level.LOW': 'The risk is low: for information only.',
+    'pl.basis': 'Based on {n} reports from {k} independent sources.',
+    'ob.title': 'How to read this page', 'ob.close': 'Got it',
+    'ob.1': 'The list shows situations, the most dangerous first. Red means act now, orange means prepare.',
+    'ob.2': 'Click a situation to see what happened, where, and why we think it is dangerous.',
+    'ob.3': '“Hybrid” means several kinds of attack, such as fake news, hacking and sabotage, that seem to work together.',
+    'h.hybrid': 'Hybrid: several kinds of threat (fake news, cyber attacks, damage to infrastructure, physical action) that appear to be connected.',
+    'h.confidence': 'Confidence: how sure the system is. It grows when several independent sources report the same thing.',
+    'h.score': 'Risk score from 0 to 100. Above 75 is critical, 55 high, 35 medium.',
+    'h.signal': 'A signal is one news article, post or report collected from a public source.',
+    'h.replay': 'Replay shows step by step how the warning built up, as if the system had been watching live.',
+    'h.brief': 'A ready-to-share report for decision makers. You can save it as a PDF.',
+    'h.sources': 'Where the information comes from, and how trustworthy each source is (0-100).',
+    'd.replaySub': 'How the warning built up', 'd.briefSub': 'Ready-to-share report',
+    'd.techShow': 'Show technical details', 'd.techHide': 'Hide technical details',
+    'f.toggle': 'Filters', 'f.more': 'More filters',
+    'list.showAll': 'Show all {n}', 'list.showLess': 'Show fewer',
+    'map.satellite': 'Satellite', 'map.dark': 'Dark', 'map.streets': 'Streets', 'map.live': 'LIVE',
+    'map.updated': 'updated {t}', 'map.fullscreen': 'Full screen', 'map.exit': 'Exit full screen',
+    'map.legend': 'Risk', 'map.reports': '{n} reports', 'map.country': 'Highest risk: {level}',
+  },
+  sq: {
+    'nav.board': 'Alarmet', 'nav.network': 'Rrjeti', 'nav.signals': 'Lajmet', 'nav.analyze': 'Analizo',
+    'mode.simple': 'Thjeshtë', 'mode.expert': 'Ekspert', 'mode.tip': 'Pamja e thjeshtë fsheh detajet teknike',
+    'st.critical': '{n} situata kërkojnë vëmendje tani', 'st.high': 'Asnjë situatë kritike, {n} për t’u përgatitur',
+    'st.calm': 'Qetë: asnjë situatë urgjente tani', 'st.top': 'Më urgjentja: {zone}', 'st.open': 'Hape',
+    'lv.CRITICAL': 'Vepro tani', 'lv.HIGH': 'Përgatit reagimin', 'lv.MEDIUM': 'Vazhdo ta ndjekësh', 'lv.LOW': 'Për informim',
+    'pl.title': 'Çfarë do të thotë kjo?',
+    'pl.hybrid': '{n} lloje të ndryshme incidentesh në {zone} ({cats}) duket se janë pjesë e një sulmi të koordinuar.',
+    'pl.single': 'Raportime për aktivitet ({cat}) në {zone}. Nuk u gjet lidhje me lloje të tjera incidentesh.',
+    'pl.multi': 'Disa lloje incidentesh në {zone}, por ende pa prova që janë të lidhura.',
+    'pl.level.CRITICAL': 'Rreziku është kritik: lajmëroni menjëherë ekipet përgjegjëse.',
+    'pl.level.HIGH': 'Rreziku është i lartë: përgatitni reagimin dhe ndiqeni nga afër.',
+    'pl.level.MEDIUM': 'Rreziku është mesatar: vazhdoni të ndiqni raportimet e reja.',
+    'pl.level.LOW': 'Rreziku është i ulët: vetëm për informim.',
+    'pl.basis': 'Bazuar në {n} raportime nga {k} burime të pavarura.',
+    'ob.title': 'Si ta lexoni këtë faqe', 'ob.close': 'E kuptova',
+    'ob.1': 'Lista tregon situatat, nga më e rrezikshmja. E kuqja do të thotë vepro tani, portokallia përgatitu.',
+    'ob.2': 'Klikoni një situatë për të parë çfarë ndodhi, ku, dhe pse mendojmë se është e rrezikshme.',
+    'ob.3': '“Hibrid” do të thotë disa lloje sulmesh, si lajme të rreme, hakim dhe sabotim, që duket se veprojnë bashkë.',
+    'h.hybrid': 'Hibrid: disa lloje kërcënimesh (lajme të rreme, sulme kibernetike, dëmtim i infrastrukturës, veprime fizike) që duket se janë të lidhura.',
+    'h.confidence': 'Besueshmëria: sa i sigurt është sistemi. Rritet kur disa burime të pavarura raportojnë të njëjtën gjë.',
+    'h.score': 'Nota e rrezikut nga 0 në 100. Mbi 75 kritik, mbi 55 i lartë, mbi 35 mesatar.',
+    'h.signal': 'Një sinjal është një lajm, postim ose raport i mbledhur nga një burim publik.',
+    'h.replay': 'Riluajtja tregon hap pas hapi si u formua paralajmërimi, sikur sistemi të kishte qenë duke vëzhguar live.',
+    'h.brief': 'Raport i gatshëm për vendimmarrësit. Mund ta ruani si PDF.',
+    'h.sources': 'Nga vjen informacioni dhe sa i besueshëm është secili burim (0-100).',
+    'd.replaySub': 'Si u formua paralajmërimi', 'd.briefSub': 'Raport i gatshëm për ndarje',
+    'd.techShow': 'Shfaq detajet teknike', 'd.techHide': 'Fshih detajet teknike',
+    'f.toggle': 'Filtrat', 'f.more': 'Më shumë filtra',
+    'list.showAll': 'Shfaq të gjitha ({n})', 'list.showLess': 'Shfaq më pak',
+    'map.satellite': 'Satelit', 'map.dark': 'E errët', 'map.streets': 'Rrugë', 'map.live': 'LIVE',
+    'map.updated': 'përditësuar {t}', 'map.fullscreen': 'Ekran i plotë', 'map.exit': 'Dil nga ekrani i plotë',
+    'map.legend': 'Rreziku', 'map.reports': '{n} raportime', 'map.country': 'Rreziku më i lartë: {level}',
+  },
+  de: {
+    'nav.board': 'Warnungen', 'nav.network': 'Netzwerk', 'nav.signals': 'Meldungen', 'nav.analyze': 'Analyse',
+    'mode.simple': 'Einfach', 'mode.expert': 'Experte', 'mode.tip': 'Die einfache Ansicht blendet technische Details aus',
+    'st.critical': '{n} Lage(n) erfordern jetzt Aufmerksamkeit', 'st.high': 'Keine kritische Lage, {n} zur Vorbereitung',
+    'st.calm': 'Ruhig: derzeit keine dringende Lage', 'st.top': 'Am dringendsten: {zone}', 'st.open': 'Öffnen',
+    'lv.CRITICAL': 'Jetzt handeln', 'lv.HIGH': 'Reaktion vorbereiten', 'lv.MEDIUM': 'Weiter beobachten', 'lv.LOW': 'Zur Information',
+    'pl.title': 'Was bedeutet das?',
+    'pl.hybrid': '{n} verschiedene Arten von Vorfällen in {zone} ({cats}) scheinen Teil eines koordinierten Angriffs zu sein.',
+    'pl.single': 'Meldungen über {cat}-Aktivität in {zone}. Eine Verbindung zu anderen Vorfallarten wurde nicht gefunden.',
+    'pl.multi': 'Mehrere Arten von Vorfällen in {zone}, aber noch kein Beleg, dass sie zusammenhängen.',
+    'pl.level.CRITICAL': 'Das Risiko ist kritisch: die zuständigen Teams jetzt alarmieren.',
+    'pl.level.HIGH': 'Das Risiko ist hoch: eine Reaktion vorbereiten und genau beobachten.',
+    'pl.level.MEDIUM': 'Das Risiko ist mittel: neue Meldungen weiter beobachten.',
+    'pl.level.LOW': 'Das Risiko ist gering: nur zur Information.',
+    'pl.basis': 'Grundlage: {n} Meldungen aus {k} unabhängigen Quellen.',
+    'ob.title': 'So lesen Sie diese Seite', 'ob.close': 'Verstanden',
+    'ob.1': 'Die Liste zeigt Lagen, die gefährlichste zuerst. Rot heißt jetzt handeln, Orange heißt vorbereiten.',
+    'ob.2': 'Klicken Sie auf eine Lage, um zu sehen, was wo passiert ist und warum wir sie für gefährlich halten.',
+    'ob.3': '„Hybrid“ bedeutet mehrere Angriffsarten, etwa Falschmeldungen, Hacking und Sabotage, die zusammenzuwirken scheinen.',
+    'h.hybrid': 'Hybrid: mehrere Bedrohungsarten (Falschmeldungen, Cyberangriffe, Schäden an Infrastruktur, physische Aktionen), die zusammenzuhängen scheinen.',
+    'h.confidence': 'Konfidenz: wie sicher das System ist. Sie steigt, wenn mehrere unabhängige Quellen dasselbe melden.',
+    'h.score': 'Risikowert von 0 bis 100. Über 75 kritisch, über 55 hoch, über 35 mittel.',
+    'h.signal': 'Ein Signal ist ein Artikel, Beitrag oder Bericht aus einer öffentlichen Quelle.',
+    'h.replay': 'Die Wiedergabe zeigt Schritt für Schritt, wie die Warnung entstand, als hätte das System live beobachtet.',
+    'h.brief': 'Ein teilbarer Bericht für Entscheider. Er lässt sich als PDF speichern.',
+    'h.sources': 'Woher die Informationen stammen und wie vertrauenswürdig jede Quelle ist (0-100).',
+    'd.replaySub': 'Wie die Warnung entstand', 'd.briefSub': 'Teilbarer Bericht',
+    'd.techShow': 'Technische Details zeigen', 'd.techHide': 'Technische Details ausblenden',
+    'f.toggle': 'Filter', 'f.more': 'Weitere Filter',
+    'list.showAll': 'Alle {n} anzeigen', 'list.showLess': 'Weniger anzeigen',
+    'map.satellite': 'Satellit', 'map.dark': 'Dunkel', 'map.streets': 'Straßen', 'map.live': 'LIVE',
+    'map.updated': 'aktualisiert {t}', 'map.fullscreen': 'Vollbild', 'map.exit': 'Vollbild beenden',
+    'map.legend': 'Risiko', 'map.reports': '{n} Meldungen', 'map.country': 'Höchstes Risiko: {level}',
+  },
+}
+for (const l of Object.keys(EXTRA)) Object.assign(D[l], EXTRA[l])
 
-function readLang() {
+const LangContext = createContext({ lang: 'en', setLang: () => {}, t: (k) => k, mode: 'simple', setMode: () => {} })
+
+function readStored(key, allowed, fallback) {
   try {
-    const v = localStorage.getItem('hs-lang')
-    return D[v] ? v : 'en'
+    const v = localStorage.getItem(key)
+    return allowed.includes(v) ? v : fallback
   } catch {
-    return 'en'
+    return fallback
   }
 }
 
+function store(key, value) {
+  try { localStorage.setItem(key, value) } catch { /* storage unavailable */ }
+}
+
 export function LangProvider({ children }) {
-  const [lang, setLangState] = useState(readLang)
-  const setLang = (v) => {
-    setLangState(v)
-    try { localStorage.setItem('hs-lang', v) } catch { /* storage unavailable */ }
-  }
+  const [lang, setLangState] = useState(() => readStored('hs-lang', Object.keys(D), 'en'))
+  // "simple" hides technical details for non-specialists; "expert" shows everything
+  const [mode, setModeState] = useState(() => readStored('hs-mode', ['simple', 'expert'], 'simple'))
+  setFormatLang(lang) // dates, relative times and badges follow the language on this render
+  const setLang = (v) => { setLangState(v); store('hs-lang', v) }
+  const setMode = (v) => { setModeState(v); store('hs-mode', v) }
   useEffect(() => { document.documentElement.lang = lang }, [lang])
   const t = useCallback((key, vars) => {
     let s = D[lang][key] ?? D.en[key] ?? key
     if (vars) for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, v)
     return s
   }, [lang])
-  return <LangContext.Provider value={{ lang, setLang, t }}>{children}</LangContext.Provider>
+  return <LangContext.Provider value={{ lang, setLang, t, mode, setMode }}>{children}</LangContext.Provider>
 }
 
 export const useI18n = () => useContext(LangContext)

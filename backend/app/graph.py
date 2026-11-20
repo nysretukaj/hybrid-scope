@@ -34,7 +34,7 @@ def build_graph(alerts: list[dict], max_entities: int = 70) -> dict:
         linked = {k: n for k, n in per_alert[a["id"]].items() if k in keep}
         if not linked:
             continue
-        nodes.append({"id": f"a:{a['id']}", "kind": "alert", "label": a["zone"], "alert_id": a["id"],
+        nodes.append({"id": f"a:{a['id']}", "kind": "alert", "label": a.get("zone_label") or a["zone"], "alert_id": a["id"],
                       "level": a["level"], "score": a["score"], "is_hybrid": a["is_hybrid"], "synthetic": a["synthetic"]})
         for key, n in linked.items():
             edges.append({"source": f"a:{a['id']}", "target": f"e:{key[0]}:{key[1]}", "weight": n})

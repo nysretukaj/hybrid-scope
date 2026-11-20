@@ -1,10 +1,16 @@
+import { useState } from 'react'
 import { CATEGORY_ORDER, cat } from '../lib/format'
 import { useI18n } from '../lib/i18n'
+import { Help } from './ui'
 
 export default function Filters({ filters, setFilters, zones }) {
-  const { t } = useI18n()
+  const { t, mode } = useI18n()
+  const [moreOpen, setMoreOpen] = useState(null) // null = follow the view mode
+  const showMore = moreOpen ?? mode === 'expert'
   const set = (k, v) => setFilters((f) => ({ ...f, [k]: v }))
   const sources = [['all', t('f.all')], ['synthetic', t('f.scenario')], ['live', t('f.live')]]
+  const activeAdvanced = [filters.zone, filters.source !== 'all', filters.min_confidence > 0, filters.hybrid_only, filters.hide_dismissed]
+    .filter(Boolean).length
   return (
     <div className="panel space-y-3 p-3">
       <input
@@ -37,6 +43,16 @@ export default function Filters({ filters, setFilters, zones }) {
         })}
       </div>
 
+      <button
+        onClick={() => setMoreOpen(!showMore)}
+        aria-expanded={showMore}
+        className="flex w-full items-center gap-2 text-[11px] text-slate-400 hover:text-slate-200"
+      >
+        <span>{showMore ? '▾' : '▸'} {t('f.more')}</span>
+        {activeAdvanced > 0 && <span className="rounded-full bg-cyan-500/20 px-1.5 font-mono text-[10px] text-cyan-200">{activeAdvanced}</span>}
+      </button>
+
+      {showMore && <>
       <div className="grid grid-cols-2 gap-2">
         <select
           value={filters.zone}
@@ -44,7 +60,7 @@ export default function Filters({ filters, setFilters, zones }) {
           className="rounded-lg bg-slate-950/70 px-2 py-1.5 text-xs text-slate-300 ring-1 ring-slate-700 outline-none"
         >
           <option value="">{t('f.allRegions')}</option>
-          {zones.map((z) => <option key={z} value={z}>{z}</option>)}
+          {zones.map((z) => <option key={z.value} value={z.value}>{z.label}</option>)}
         </select>
         <div className="flex rounded-lg bg-slate-950/70 p-0.5 ring-1 ring-slate-700">
           {sources.map(([k, label]) => (
@@ -60,7 +76,7 @@ export default function Filters({ filters, setFilters, zones }) {
       </div>
 
       <label className="flex items-center gap-2 text-[11px] text-slate-400">
-        <span className="whitespace-nowrap">{t('f.minConf')}</span>
+        <span className="flex items-center whitespace-nowrap">{t('f.minConf')}<Help term="confidence" /></span>
         <input
           type="range" min="0" max="0.95" step="0.05"
           value={filters.min_confidence}
@@ -79,6 +95,7 @@ export default function Filters({ filters, setFilters, zones }) {
           {t('f.hideDismissed')}
         </label>
       </div>
+      </>}
     </div>
   )
 }

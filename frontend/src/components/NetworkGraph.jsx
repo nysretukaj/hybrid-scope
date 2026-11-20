@@ -1,7 +1,7 @@
 import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY } from 'd3-force'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../lib/api'
-import { level } from '../lib/format'
+import { level, levelLabel } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 import { SectionTitle } from './ui'
 
@@ -12,7 +12,7 @@ const TYPE_COLOR = { actor: '#fb7185', organisation: '#60a5fa', technology: '#22
 const radius = (n) => (n.kind === 'alert' ? 12 + n.score / 6 : 4 + Math.min(9, n.count * 1.1))
 
 export default function NetworkGraph({ source, refreshKey, onOpenAlert }) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const [data, setData] = useState(null)
   const [, setFrame] = useState(0)
   const [hover, setHover] = useState(null)
@@ -24,9 +24,9 @@ export default function NetworkGraph({ source, refreshKey, onOpenAlert }) {
 
   useEffect(() => {
     let alive = true
-    api.graph(source).then((d) => alive && setData(d))
+    api.graph(source, lang).then((d) => alive && setData(d))
     return () => { alive = false }
-  }, [source, refreshKey])
+  }, [source, refreshKey, lang])
 
   useEffect(() => {
     if (!data) return
@@ -172,7 +172,7 @@ export default function NetworkGraph({ source, refreshKey, onOpenAlert }) {
                     {showLabel && <text x={r + 4} dy="4" fontSize="10.5" fill="#cbd5e1" fontFamily="Inter">{n.label}</text>}
                   </>
                 )}
-                <title>{n.kind === 'alert' ? `${n.label} · ${n.level} ${Math.round(n.score)}` : `${t(`et.${n.type}`)}: ${n.label} · ${t('n.mentions', { n: n.count })} · ${t('n.alerts', { n: n.alerts })}`}</title>
+                <title>{n.kind === 'alert' ? `${n.label} · ${levelLabel(n.level)} ${Math.round(n.score)}` : `${t(`et.${n.type}`)}: ${n.label} · ${t('n.mentions', { n: n.count })} · ${t('n.alerts', { n: n.alerts })}`}</title>
               </g>
             )
           })}

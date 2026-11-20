@@ -14,13 +14,13 @@ function H({ children }) {
 }
 
 export default function BriefModal({ alertId, source, onClose }) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const [b, setB] = useState(null)
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    api.brief(alertId, source).then(setB).catch((e) => setError(e.message))
-  }, [alertId, source])
+    api.brief(alertId, source, lang).then(setB).catch((e) => setError(e.message))
+  }, [alertId, source, lang])
 
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
@@ -51,13 +51,13 @@ export default function BriefModal({ alertId, source, onClose }) {
               </div>
               <div className="shrink-0 text-right">
                 <div className="font-mono text-4xl font-bold" style={{ color: LEVEL_INK[b.level] }}>{Math.round(b.score)}</div>
-                <div className="text-[11px] font-bold tracking-widest" style={{ color: LEVEL_INK[b.level] }}>{b.level}</div>
+                <div className="text-[11px] font-bold tracking-widest" style={{ color: LEVEL_INK[b.level] }}>{b.level_label || b.level}</div>
               </div>
             </div>
             <dl className="mt-3 grid grid-cols-3 gap-4 text-xs">
               <div><dt className="text-slate-500">{t('b.period')}</dt><dd className="font-medium">{fmtTime(b.period.from)} – {fmtTime(b.period.to)}</dd></div>
               <div><dt className="text-slate-500">{t('d.confidence')}</dt><dd className="font-medium">{pct(b.confidence)} · {b.likelihood}</dd></div>
-              <div><dt className="text-slate-500">{t('b.risk')}</dt><dd className="font-medium">{b.level} ({Math.round(b.score)}/100)</dd></div>
+              <div><dt className="text-slate-500">{t('b.risk')}</dt><dd className="font-medium">{b.level_label || b.level} ({Math.round(b.score)}/100)</dd></div>
             </dl>
 
             <H>{t('b.bluf')}</H>

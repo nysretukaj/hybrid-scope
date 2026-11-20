@@ -10,16 +10,17 @@ const PAD = { l: 34, r: 14, t: 12, b: 26 }
 const STEP_MS = 1300
 
 export default function ReplayPanel({ alertId, source, onFrame, onClose }) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const [data, setData] = useState(null)
   const [i, setI] = useState(0)
   const [playing, setPlaying] = useState(true)
 
   useEffect(() => {
     let alive = true
-    api.replay(alertId, source).then((d) => alive && (setData(d), setI(0), setPlaying(true)))
+    // a language switch only swaps the texts; playback keeps its position
+    api.replay(alertId, source, lang).then((d) => alive && setData(d))
     return () => { alive = false }
-  }, [alertId, source])
+  }, [alertId, source, lang])
 
   useEffect(() => {
     if (!data || !playing) return
@@ -109,7 +110,7 @@ export default function ReplayPanel({ alertId, source, onFrame, onClose }) {
             <ScoreRing score={frame.score} levelName={frame.level} size={76} />
             <div className="space-y-1.5">
               <LevelBadge value={frame.level} />
-              {frame.is_hybrid && <div><span className="animate-pulse rounded-md bg-fuchsia-500/20 px-2 py-0.5 text-[10px] font-bold tracking-widest text-fuchsia-200 ring-1 ring-fuchsia-500/50">HYBRID</span></div>}
+              {frame.is_hybrid && <div><span className="animate-pulse rounded-md bg-fuchsia-500/20 px-2 py-0.5 text-[10px] font-bold tracking-widest text-fuchsia-200 ring-1 ring-fuchsia-500/50">{t('ui.hybrid')}</span></div>}
               <div className="font-mono text-[10px] text-slate-500">{t('rp.signal', { i: i + 1, n: data.frames.length })}</div>
             </div>
           </div>

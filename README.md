@@ -123,13 +123,24 @@ Invoke-RestMethod -Method Post http://localhost:8000/api/demo/snapshot    # or: 
 ```
 Only titles, short excerpts (≤ 280 characters) and links of third-party articles are stored.
 
-## Optional: push notifications
-```powershell
-$env:TELEGRAM_BOT_TOKEN = "<from @BotFather>"; $env:TELEGRAM_CHAT_ID = "<chat id>"
-$env:ALERT_WEBHOOK_URL = "<Slack/Discord/Teams incoming webhook>"   # optional, either or both
-$env:NOTIFY_MIN_LEVEL = "CRITICAL"; $env:PUBLIC_URL = "http://localhost:8000"
-```
-New live alerts at or above the level are pushed once after each ingest. A **Send alert** button appears on every alert.
+## Optional: Telegram alerts
+1. In Telegram, message **@BotFather**, send `/newbot` and copy the token into `backend/.env` as `TELEGRAM_BOT_TOKEN=...`.
+2. Open your new bot in Telegram and press **Start**.
+3. Run the setup helper. It finds your chat, saves `TELEGRAM_CHAT_ID` to `backend/.env` and sends a test message:
+   ```powershell
+   cd backend; .\.venv\Scripts\python -m app.notify --setup
+   ```
+4. Restart the API. Every alert now shows a **Send alert** button, and new live alerts ≥ `NOTIFY_MIN_LEVEL` (default `CRITICAL`) are pushed automatically after each ingest.
+
+Messages are written in `NOTIFY_LANG` (`sq` by default, or `en`/`de`). A Slack/Discord/Teams webhook works too (`ALERT_WEBHOOK_URL`). On Render, add the same variables under **Environment**.
+
+## Languages
+The whole interface switches between **English, Albanian and German**. The backend renders every generated text in the chosen language:
+- alert titles and summaries, score explanations and link reasons;
+- the intelligence brief, AI and local-NLP rationales, and place and entity names;
+- the exercise scenario content.
+
+Real live articles stay in their original language, because they are source evidence. MITRE ATT&CK / DISARM technique names stay in English, because they are international identifiers.
 
 ## Demo script (≈4 min)
 1. **Signal Stream**: "This is the firehose: hundreds of items from 15 sources in three languages."

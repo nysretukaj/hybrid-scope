@@ -15,6 +15,9 @@ from ..normalize import build_signal, utcnow
 def load_seed(now: datetime | None = None) -> int:
     now = now or utcnow()
     data = json.loads(config.SEED_PATH.read_text(encoding="utf-8"))
+    # Albanian and German versions of every scenario item (title, text, rationale)
+    i18n_path = config.SEED_PATH.with_name("scenario_i18n.json")
+    translations = json.loads(i18n_path.read_text(encoding="utf-8")) if i18n_path.exists() else {}
     signals = []
     for item in data["signals"]:
         local = analyze_local(item["title"], item["text"])
@@ -28,6 +31,7 @@ def load_seed(now: datetime | None = None) -> int:
             "rationale": pre["rationale"],
             "entities": merge_entities(local["entities"], pre.get("entities", {})),
             "analyzer": "claude-precomputed",
+            "i18n": translations.get(item["id"], {}),
         }
         signals.append(build_signal(
             source_name=item["source_name"],
