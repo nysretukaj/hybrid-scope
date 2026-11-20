@@ -1,4 +1,3 @@
-import { analyzer, timeAgo } from '../lib/format'
 import { LANGS, useI18n } from '../lib/i18n'
 
 const TABS = ['board', 'network', 'signals', 'analyze']
@@ -17,17 +16,16 @@ function Logo() {
 
 const NAV_ICON = { board: '🛡️', network: '🕸️', signals: '📰', analyze: '🔍' }
 
-function ModeToggle() {
-  const { t, mode, setMode } = useI18n()
+/** Reopens the short "What is this page?" guide at any time. */
+function HowButton() {
+  const { t } = useI18n()
   return (
-    <div className="flex rounded-lg bg-slate-900/80 p-0.5 ring-1 ring-slate-800" role="group" title={t('mode.tip')}>
-      {['simple', 'expert'].map((m) => (
-        <button key={m} onClick={() => setMode(m)}
-          className={`rounded-md px-2 py-1 text-[11px] ${mode === m ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'}`}>
-          {t(`mode.${m}`)}
-        </button>
-      ))}
-    </div>
+    <button
+      onClick={() => { window.dispatchEvent(new Event('hs-guide')); window.scrollTo({ top: 0, behavior: 'smooth' }) }}
+      className="rounded-lg bg-cyan-500/10 px-2.5 py-1.5 text-xs font-medium text-cyan-200 ring-1 ring-cyan-500/30 hover:bg-cyan-500/20"
+    >
+      💡 <span className="hidden sm:inline">{t('how.btn')}</span>
+    </button>
   )
 }
 
@@ -63,10 +61,8 @@ export function BottomNav({ view, setView }) {
   )
 }
 
-export default function Header({ view, setView, health, busy, onIngest, onReset }) {
-  const { t, mode } = useI18n()
-  const last = health?.last_ingest
-  const expert = mode === 'expert'
+export default function Header({ view, setView, health, busy, onIngest }) {
+  const { t } = useI18n()
   return (
     <header className="no-print border-b border-slate-800/80 bg-[#060a13]/90 backdrop-blur lg:sticky lg:top-0 lg:z-[2000]">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-3 py-2 sm:px-4 lg:py-3">
@@ -98,24 +94,7 @@ export default function Header({ view, setView, health, busy, onIngest, onReset 
               {t('hdr.offline')}
             </span>
           )}
-          {expert && <span className="hidden items-center gap-2 text-slate-400 xl:flex">
-            <span className="relative inline-block h-2 w-2 rounded-full text-emerald-400 live-dot" style={{ background: 'currentColor' }} />
-            {t('hdr.analyzer')}: <span className="text-slate-200">{health ? analyzer(health.analyzer).label : '-'}</span>
-          </span>}
-          {health?.llm?.enrich?.running && (
-            <span className="hidden rounded-md bg-emerald-500/10 px-2 py-1 font-mono text-[11px] text-emerald-300 ring-1 ring-emerald-500/30 sm:inline" title={health.llm.model_live}>
-              {t('hdr.aiUpgrading', { done: health.llm.enrich.done, n: health.llm.enrich.queued })}
-            </span>
-          )}
-          {expert && health?.llm?.last_error && !health?.llm?.enrich?.running && (
-            <span className="hidden max-w-56 truncate text-[11px] text-amber-400 lg:inline" title={health.llm.last_error}>⚠ LLM: {health.llm.last_error}</span>
-          )}
-          {expert && (
-            <span className="hidden text-slate-500 2xl:inline">
-              {t('hdr.liveIngest')}: {last ? `${timeAgo(last.finished_at)} · ${last.fetched} ${t('hdr.items')}` : t('hdr.notRun')}
-            </span>
-          )}
-          <ModeToggle />
+          <HowButton />
           <LangSwitch />
           <button
             onClick={onIngest}
@@ -127,14 +106,6 @@ export default function Header({ view, setView, health, busy, onIngest, onReset 
             <span className={busy === 'ingest' ? 'inline-block animate-spin' : ''}>⟳</span>
             <span className="hidden sm:inline"> {busy === 'ingest' ? t('hdr.ingesting') : t('hdr.ingest')}</span>
           </button>
-          {expert && !health?.public_mode && <button
-            onClick={onReset}
-            disabled={!!busy}
-            className="hidden rounded-lg px-3 py-1.5 text-slate-400 ring-1 ring-slate-700 transition hover:text-slate-200 disabled:opacity-50 sm:inline"
-            title={t('hdr.resetTitle')}
-          >
-            {busy === 'reset' ? t('hdr.resetting') : t('hdr.reset')}
-          </button>}
         </div>
       </div>
     </header>

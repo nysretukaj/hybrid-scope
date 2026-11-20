@@ -1,14 +1,13 @@
 import { useState } from 'react'
-import { cat, level, pct, timeAgo } from '../lib/format'
+import { cat, level, timeAgo } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 import { HybridBadge, LevelBadge, LiveBadge } from './ui'
 
 const MOBILE_LIMIT = 5
 
 export default function AlertList({ alerts, selectedId, onSelect, total }) {
-  const { t, mode } = useI18n()
+  const { t } = useI18n()
   const [showAll, setShowAll] = useState(false)
-  const expert = mode === 'expert'
   const hiddenOnMobile = alerts.length - MOBILE_LIMIT
   return (
     <div className="panel flex min-h-0 flex-1 flex-col">
@@ -41,7 +40,7 @@ export default function AlertList({ alerts, selectedId, onSelect, total }) {
                   </div>
                   <div className="mt-1.5 truncate text-sm font-medium text-slate-100">{a.zone_label || a.zone}</div>
                   <div className="truncate text-xs text-slate-400" title={a.headline}>{a.headline}</div>
-                  {!expert && <div className="mt-1 text-[11px] font-medium" style={{ color: l.color }}>→ {t(`lv.${a.level}`)}</div>}
+                  <div className="mt-1 text-[11px] font-medium" style={{ color: l.color }}>→ {t(`lv.${a.level}`)}</div>
                   <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
                     <span className="flex gap-1">
                       {a.categories.map((c) => (
@@ -49,7 +48,6 @@ export default function AlertList({ alerts, selectedId, onSelect, total }) {
                       ))}
                     </span>
                     <span>{a.signal_count} {t('list.sig')} · {a.source_count} {t('list.src')}</span>
-                    {expert && <span>{t('list.conf')} {pct(a.confidence)}</span>}
                     <span className="ml-auto">{timeAgo(a.last_seen)}</span>
                   </div>
                 </div>

@@ -4,9 +4,8 @@ import { useI18n } from '../lib/i18n'
 import { Help } from './ui'
 
 export default function Filters({ filters, setFilters, zones }) {
-  const { t, mode } = useI18n()
-  const [moreOpen, setMoreOpen] = useState(null) // null = follow the view mode
-  const showMore = moreOpen ?? mode === 'expert'
+  const { t } = useI18n()
+  const [showMore, setMoreOpen] = useState(false)
   const set = (k, v) => setFilters((f) => ({ ...f, [k]: v }))
   const sources = [['all', t('f.all')], ['synthetic', t('f.scenario')], ['live', t('f.live')]]
   const activeAdvanced = [filters.zone, filters.source !== 'all', filters.min_confidence > 0, filters.hybrid_only, filters.hide_dismissed]

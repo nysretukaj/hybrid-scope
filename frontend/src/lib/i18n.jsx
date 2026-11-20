@@ -191,7 +191,7 @@ const D = {
 const EXTRA = {
   en: {
     'nav.board': 'Alerts', 'nav.network': 'Network', 'nav.signals': 'Feed', 'nav.analyze': 'Analyze',
-    'mode.simple': 'Simple', 'mode.expert': 'Expert', 'mode.tip': 'Simple view hides technical details',
+    'how.btn': 'How does it work?',
     'st.critical': '{n} situation(s) need attention now', 'st.high': 'No critical situation, {n} to prepare for',
     'st.calm': 'Calm: no urgent situation right now', 'st.top': 'Most urgent: {zone}', 'st.open': 'Open',
     'lv.CRITICAL': 'Act now', 'lv.HIGH': 'Prepare a response', 'lv.MEDIUM': 'Keep watching', 'lv.LOW': 'For information',
@@ -204,10 +204,11 @@ const EXTRA = {
     'pl.level.MEDIUM': 'The risk is moderate: keep watching for new reports.',
     'pl.level.LOW': 'The risk is low: for information only.',
     'pl.basis': 'Based on {n} reports from {k} independent sources.',
-    'ob.title': 'How to read this page', 'ob.close': 'Got it',
-    'ob.1': 'The list shows situations, the most dangerous first. Red means act now, orange means prepare.',
-    'ob.2': 'Click a situation to see what happened, where, and why we think it is dangerous.',
-    'ob.3': '“Hybrid” means several kinds of attack, such as fake news, hacking and sabotage, that seem to work together.',
+    'ob.title': 'What is this page?', 'ob.close': 'Got it',
+    'ob.what': 'HybridScope reads news from the internet automatically and shows you where there is a risk of attack: fake news, hacking or sabotage. When several of these happen together in one place, it warns you.',
+    'ob.1': 'Look at the coloured bar at the top: it tells you if anything is urgent. Press “Open” to read it.',
+    'ob.2': 'Click a situation in the list or a dot on the map. Under “What does this mean?” it is explained in plain words.',
+    'ob.3': 'Colours: red = act now, orange = prepare, yellow = keep watching, grey = for information only.',
     'h.hybrid': 'Hybrid: several kinds of threat (fake news, cyber attacks, damage to infrastructure, physical action) that appear to be connected.',
     'h.confidence': 'Confidence: how sure the system is. It grows when several independent sources report the same thing.',
     'h.score': 'Risk score from 0 to 100. Above 75 is critical, 55 high, 35 medium.',
@@ -225,7 +226,7 @@ const EXTRA = {
   },
   sq: {
     'nav.board': 'Alarmet', 'nav.network': 'Rrjeti', 'nav.signals': 'Lajmet', 'nav.analyze': 'Analizo',
-    'mode.simple': 'Thjeshtë', 'mode.expert': 'Ekspert', 'mode.tip': 'Pamja e thjeshtë fsheh detajet teknike',
+    'how.btn': 'Si funksionon?',
     'st.critical': '{n} situata kërkojnë vëmendje tani', 'st.high': 'Asnjë situatë kritike, {n} për t’u përgatitur',
     'st.calm': 'Qetë: asnjë situatë urgjente tani', 'st.top': 'Më urgjentja: {zone}', 'st.open': 'Hape',
     'lv.CRITICAL': 'Vepro tani', 'lv.HIGH': 'Përgatit reagimin', 'lv.MEDIUM': 'Vazhdo ta ndjekësh', 'lv.LOW': 'Për informim',
@@ -238,10 +239,11 @@ const EXTRA = {
     'pl.level.MEDIUM': 'Rreziku është mesatar: vazhdoni të ndiqni raportimet e reja.',
     'pl.level.LOW': 'Rreziku është i ulët: vetëm për informim.',
     'pl.basis': 'Bazuar në {n} raportime nga {k} burime të pavarura.',
-    'ob.title': 'Si ta lexoni këtë faqe', 'ob.close': 'E kuptova',
-    'ob.1': 'Lista tregon situatat, nga më e rrezikshmja. E kuqja do të thotë vepro tani, portokallia përgatitu.',
-    'ob.2': 'Klikoni një situatë për të parë çfarë ndodhi, ku, dhe pse mendojmë se është e rrezikshme.',
-    'ob.3': '“Hibrid” do të thotë disa lloje sulmesh, si lajme të rreme, hakim dhe sabotim, që duket se veprojnë bashkë.',
+    'ob.title': 'Çfarë është kjo faqe?', 'ob.close': 'E kuptova',
+    'ob.what': 'HybridScope lexon automatikisht lajmet nga interneti dhe ju tregon ku ka rrezik nga sulme: lajme të rreme, hakime apo sabotime. Kur disa prej tyre ndodhin bashkë në të njëjtin vend, ju paralajmëron.',
+    'ob.1': 'Shikoni shiritin me ngjyrë lart: ai ju thotë nëse ka diçka urgjente. Shtypni “Hape” për ta lexuar.',
+    'ob.2': 'Klikoni një situatë në listë ose një pikë në hartë. Te “Çfarë do të thotë kjo?” shpjegohet me fjalë të thjeshta.',
+    'ob.3': 'Ngjyrat: e kuqe = vepro tani, portokalli = përgatitu, e verdhë = vazhdo ta ndjekësh, gri = vetëm për informim.',
     'h.hybrid': 'Hibrid: disa lloje kërcënimesh (lajme të rreme, sulme kibernetike, dëmtim i infrastrukturës, veprime fizike) që duket se janë të lidhura.',
     'h.confidence': 'Besueshmëria: sa i sigurt është sistemi. Rritet kur disa burime të pavarura raportojnë të njëjtën gjë.',
     'h.score': 'Nota e rrezikut nga 0 në 100. Mbi 75 kritik, mbi 55 i lartë, mbi 35 mesatar.',
@@ -259,7 +261,7 @@ const EXTRA = {
   },
   de: {
     'nav.board': 'Warnungen', 'nav.network': 'Netzwerk', 'nav.signals': 'Meldungen', 'nav.analyze': 'Analyse',
-    'mode.simple': 'Einfach', 'mode.expert': 'Experte', 'mode.tip': 'Die einfache Ansicht blendet technische Details aus',
+    'how.btn': 'Wie funktioniert es?',
     'st.critical': '{n} Lage(n) erfordern jetzt Aufmerksamkeit', 'st.high': 'Keine kritische Lage, {n} zur Vorbereitung',
     'st.calm': 'Ruhig: derzeit keine dringende Lage', 'st.top': 'Am dringendsten: {zone}', 'st.open': 'Öffnen',
     'lv.CRITICAL': 'Jetzt handeln', 'lv.HIGH': 'Reaktion vorbereiten', 'lv.MEDIUM': 'Weiter beobachten', 'lv.LOW': 'Zur Information',
@@ -272,10 +274,11 @@ const EXTRA = {
     'pl.level.MEDIUM': 'Das Risiko ist mittel: neue Meldungen weiter beobachten.',
     'pl.level.LOW': 'Das Risiko ist gering: nur zur Information.',
     'pl.basis': 'Grundlage: {n} Meldungen aus {k} unabhängigen Quellen.',
-    'ob.title': 'So lesen Sie diese Seite', 'ob.close': 'Verstanden',
-    'ob.1': 'Die Liste zeigt Lagen, die gefährlichste zuerst. Rot heißt jetzt handeln, Orange heißt vorbereiten.',
-    'ob.2': 'Klicken Sie auf eine Lage, um zu sehen, was wo passiert ist und warum wir sie für gefährlich halten.',
-    'ob.3': '„Hybrid“ bedeutet mehrere Angriffsarten, etwa Falschmeldungen, Hacking und Sabotage, die zusammenzuwirken scheinen.',
+    'ob.title': 'Was ist diese Seite?', 'ob.close': 'Verstanden',
+    'ob.what': 'HybridScope liest automatisch Nachrichten aus dem Internet und zeigt, wo Angriffsgefahr besteht: Falschmeldungen, Hacking oder Sabotage. Treten mehrere davon zusammen an einem Ort auf, warnt es Sie.',
+    'ob.1': 'Achten Sie auf den farbigen Balken oben: er sagt, ob etwas dringend ist. Mit „Öffnen“ lesen Sie es.',
+    'ob.2': 'Klicken Sie auf eine Lage in der Liste oder einen Punkt auf der Karte. Unter „Was bedeutet das?“ steht es in einfachen Worten.',
+    'ob.3': 'Farben: Rot = jetzt handeln, Orange = vorbereiten, Gelb = weiter beobachten, Grau = nur zur Information.',
     'h.hybrid': 'Hybrid: mehrere Bedrohungsarten (Falschmeldungen, Cyberangriffe, Schäden an Infrastruktur, physische Aktionen), die zusammenzuhängen scheinen.',
     'h.confidence': 'Konfidenz: wie sicher das System ist. Sie steigt, wenn mehrere unabhängige Quellen dasselbe melden.',
     'h.score': 'Risikowert von 0 bis 100. Über 75 kritisch, über 55 hoch, über 35 mittel.',
@@ -294,7 +297,7 @@ const EXTRA = {
 }
 for (const l of Object.keys(EXTRA)) Object.assign(D[l], EXTRA[l])
 
-const LangContext = createContext({ lang: 'en', setLang: () => {}, t: (k) => k, mode: 'simple', setMode: () => {} })
+const LangContext = createContext({ lang: 'en', setLang: () => {}, t: (k) => k })
 
 function readStored(key, allowed, fallback) {
   try {
@@ -311,18 +314,15 @@ function store(key, value) {
 
 export function LangProvider({ children }) {
   const [lang, setLangState] = useState(() => readStored('hs-lang', Object.keys(D), 'en'))
-  // "simple" hides technical details for non-specialists; "expert" shows everything
-  const [mode, setModeState] = useState(() => readStored('hs-mode', ['simple', 'expert'], 'simple'))
   setFormatLang(lang) // dates, relative times and badges follow the language on this render
   const setLang = (v) => { setLangState(v); store('hs-lang', v) }
-  const setMode = (v) => { setModeState(v); store('hs-mode', v) }
   useEffect(() => { document.documentElement.lang = lang }, [lang])
   const t = useCallback((key, vars) => {
     let s = D[lang][key] ?? D.en[key] ?? key
     if (vars) for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, v)
     return s
   }, [lang])
-  return <LangContext.Provider value={{ lang, setLang, t, mode, setMode }}>{children}</LangContext.Provider>
+  return <LangContext.Provider value={{ lang, setLang, t }}>{children}</LangContext.Provider>
 }
 
 export const useI18n = () => useContext(LangContext)
