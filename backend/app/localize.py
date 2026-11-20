@@ -60,6 +60,9 @@ def localize_signal(s: dict, lang: str | None) -> dict:
             if translated.get(field):
                 out[field] = translated[field]
         out["entities"] = {k: [entity_name(v, lang) for v in vals or []] for k, vals in (s.get("entities") or {}).items()}
+        if translated.get("title"):
+            # the target was read from the English original; next to the translated text it would be out of place
+            out["target"] = translated.get("target")
     return out
 
 

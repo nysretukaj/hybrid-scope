@@ -15,7 +15,8 @@ from pydantic import BaseModel, Field
 
 from . import config, db, enrich, notify
 from .analyzer import LLM_STATUS, active_analyzer, analyze
-from .analyzer.llm import known_model, resolve_model
+from .analyzer.llm import known_model, resolve_model, summarize_alert
+from .assess import SUBCATEGORIES, mark_duplicates, signal_view
 from .brief import build_brief
 from .correlation import build_alerts, replay
 from .feedback import apply_feedback
@@ -23,7 +24,7 @@ from .graph import build_graph
 from .ingest.live import run_live_ingest
 from .ingest.seed import reset_seed
 from .normalize import iso, parse_iso, utcnow
-from .i18n import norm_lang, zone_name
+from .i18n import norm_lang, source_label, zone_name
 from .localize import localize_alert, localize_signal
 from .snapshot import cache_key, export_snapshot, load_samples, load_snapshot, snapshot_info
 
@@ -79,6 +80,7 @@ async def ingest_once() -> dict | None:
         if config.DEMO_OFFLINE:
             return await _offline_ingest()
         report = await run_live_ingest()
+        invalidate_cache()
         report["llm_enrichment"] = start_enrichment(report.pop("new_ids", []))
         alerts, _ = _alerts("all", config.NOTIFY_LANG)
         report["notified"] = await notify.notify_new(alerts)
@@ -116,6 +118,7 @@ async def live_loop():
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    invalidate_cache()
     db.init_db()
     if config.SEED_ON_START or db.count_signals() == 0:
         db.clear_feedback()
@@ -136,6 +139,17 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="HybridScope API", version="0.2.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def clear_cache_on_change(request, call_next):
+    """Feedback, corrections, ingest and resets change the data: the next read recomputes it."""
+    response = await call_next(request)
+    if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        invalidate_cache()
+    return response
+
+
 @app.middleware("http")
 async def no_cache_html(request, call_next):
     """Always revalidate the dashboard's HTML so a rebuilt frontend is picked up immediately
@@ -154,22 +168,69 @@ app.add_middleware(
 )
 
 
-def _signals(source: str = "all"):
+def _window(hours: float | None) -> float:
+    """Time filter in hours, capped at the look-back window (None or 0 = the whole window)."""
+    return min(float(hours), config.LOOKBACK_HOURS) if hours and hours > 0 else config.LOOKBACK_HOURS
+
+
+# The dashboard asks for alerts, stats and the open alert at the same moment (and polls while the AI
+# upgrades signals): computing the window once per few seconds keeps every request fast. Any change
+# made through the API clears it at once.
+CACHE_TTL_S = 5.0
+_CACHE: dict[tuple, tuple[float, object]] = {}
+
+
+def invalidate_cache() -> None:
+    _CACHE.clear()
+
+
+def _cached(key: tuple, compute):
+    hit = _CACHE.get(key)
+    if hit and time.monotonic() - hit[0] < CACHE_TTL_S:
+        return hit[1]
+    value = compute()
+    _CACHE[key] = (time.monotonic(), value)
+    return value
+
+
+def _window_signals(source: str):
     now = utcnow()
     sigs = db.fetch_signals(since_iso=iso(now - timedelta(hours=config.LOOKBACK_HOURS)))
     if source == "synthetic":
         sigs = [s for s in sigs if s["synthetic"]]
     elif source == "live":
         sigs = [s for s in sigs if not s["synthetic"]]
-    return apply_feedback(sigs), now
+    sigs = [signal_view(s, now) for s in apply_feedback(sigs)]
+    mark_duplicates(sigs)
+    return sigs, now
 
 
-def _alerts(source: str = "all", lang: str = "en"):
-    sigs, now = _signals(source)
-    alerts = [localize_alert(a, lang) for a in build_alerts(sigs, now)]
+def _signals(source: str = "all", hours: float | None = None):
+    """Signals of the look-back window with the computed fields (bands, precision, duplicates, ...).
+    `hours` keeps only signals published in the last N hours."""
+    sigs, now = _cached(("signals", source), lambda: _window_signals(source))
+    if hours and _window(hours) < config.LOOKBACK_HOURS:
+        since = now - timedelta(hours=_window(hours))
+        sigs = [s for s in sigs if parse_iso(s["timestamp"]) >= since]
+    return sigs, now
+
+
+def _alerts(source: str = "all", lang: str = "en", hours: float | None = None):
+    """Alerts are always built from the whole window, so their IDs (and analyst verdicts) stay stable;
+    the time filter then keeps the alerts with activity in the last N hours."""
+    def compute():
+        sigs, now = _signals(source)
+        return [localize_alert(a, lang) for a in build_alerts(sigs, now)], now
+
+    alerts, now = _cached(("alerts", source, norm_lang(lang)), compute)
+    alerts = [dict(a) for a in alerts]  # verification is attached per request below
+    if hours and _window(hours) < config.LOOKBACK_HOURS:
+        since = now - timedelta(hours=_window(hours))
+        alerts = [a for a in alerts if parse_iso(a["last_seen"]) >= since]
     feedback = db.get_feedback()
     for a in alerts:
         fb = feedback.get(a["id"])
+        a["verification"] = fb["verdict"] if fb else "unverified"
         a["feedback"] = fb and {"verdict": fb["verdict"], "note": fb["note"], "at": fb["created_at"]}
     return alerts, now
 
@@ -231,27 +292,83 @@ def health():
 
 
 @app.get("/api/stats")
-def stats(source: str = "all"):
-    alerts, now = _alerts(source)
-    sigs, _ = _signals(source)
+def stats(source: str = "all", hours: Optional[float] = None, lang: str = "en"):
+    """Dashboard numbers, all computed from the stored signals and the alerts built from them."""
+    alerts, now = _alerts(source, lang, hours)
+    sigs, _ = _signals(source, hours)
+    relevant = [s for s in sigs if s["category"] != "other"]
     day_ago = now - timedelta(hours=24)
     recent = [s for s in sigs if parse_iso(s["timestamp"]) >= day_ago]
+
+    # one bar per day (oldest first), split by category
+    days = max(1, min(10, round(_window(hours) / 24)))
+    trend = []
+    for d in range(days - 1, -1, -1):
+        start, end = now - timedelta(days=d + 1), now - timedelta(days=d)
+        day = [s for s in relevant if start <= parse_iso(s["timestamp"]) < end]
+        trend.append({"day": iso(end), "total": len(day), "by_category": dict(Counter(s["category"] for s in day))})
+
+    feedback_stats = db.source_feedback_stats()
+    per_source: dict[str, dict] = {}
+    for s in sigs:
+        row = per_source.setdefault(s["source_name"], {
+            "name": source_label(s["source_name"], lang) if s["synthetic"] else s["source_name"],
+            "key": s["source_name"], "type": s["source_type"],
+            "reliability": s["source_reliability"], "prior": s.get("source_reliability_prior", s["source_reliability"]),
+            "signals": 0, "relevant": 0, **feedback_stats.get(s["source_name"], {"confirmed": 0, "rejected": 0}),
+        })
+        row["signals"] += 1
+        row["relevant"] += s["category"] != "other"
+    by_country = Counter(zone_name(s.get("country"), lang) or s.get("country") for s in relevant if s.get("country"))
+
     return {
         "generated_at": iso(now),
+        "window_hours": _window(hours),
         "signals_total": len(sigs),
         "signals_24h": len(recent),
-        "threat_relevant": sum(1 for s in sigs if s["category"] != "other"),
+        "threat_relevant": len(relevant),
         "live_signals": sum(1 for s in sigs if not s["synthetic"]),
         "synthetic_signals": sum(1 for s in sigs if s["synthetic"]),
         "sources": len({s["source_name"] for s in sigs}),
         "alerts": len(alerts),
         "hybrid_alerts": sum(1 for a in alerts if a["is_hybrid"]),
         "critical_alerts": sum(1 for a in alerts if a["level"] == "CRITICAL"),
-        "reviewed_alerts": sum(1 for a in alerts if a["feedback"]),
+        "infrastructure_alerts": sum(1 for a in alerts if "infrastructure" in a["categories"]),
+        "reviewed_alerts": sum(1 for a in alerts if a["verification"] != "unverified"),
+        "duplicates": sum(1 for s in sigs if s.get("duplicate_of")),
+        "unlocated": sum(1 for s in relevant if s.get("lat") is None),
+        "by_category": dict(Counter(s["category"] for s in relevant)),
         "by_category_24h": dict(Counter(s["category"] for s in recent)),
         "by_level": dict(Counter(a["level"] for a in alerts)),
+        "by_verification": dict(Counter(a["verification"] for a in alerts)),
+        "by_country": [{"name": n, "count": c} for n, c in by_country.most_common(10)],
+        "trend": trend,
+        "source_stats": sorted(per_source.values(), key=lambda r: (-r["relevant"], -r["signals"]))[:15],
+        "recent": [{"id": s["id"], "title": localize_signal(s, lang)["title"], "category": s["category"],
+                    "subcategory": s.get("subcategory"),
+                    "zone_label": zone_name(s.get("zone"), lang), "timestamp": s["timestamp"],
+                    "severity_level": s["severity_level"], "synthetic": s["synthetic"]}
+                   for s in sorted(relevant, key=lambda s: s["timestamp"], reverse=True)[:6]],
         "last_ingest": STATE["last_ingest"],
     }
+
+
+@app.get("/api/geo")
+def geo(source: str = "all", hours: Optional[float] = None, lang: str = "en"):
+    """Where the threat-relevant reports are, grouped by place, for the density layer of the map."""
+    sigs, _ = _signals(source, hours)
+    places: dict[tuple, dict] = {}
+    for s in sigs:
+        if s["category"] == "other" or s.get("lat") is None:
+            continue
+        p = places.setdefault((s["lat"], s["lon"]), {
+            "lat": s["lat"], "lon": s["lon"], "count": 0, "max_severity": 0.0, "categories": Counter(),
+            "precision": s.get("geo_precision"), "label": zone_name(s.get("zone"), lang),
+        })
+        p["count"] += 1
+        p["max_severity"] = max(p["max_severity"], s["severity"])
+        p["categories"][s["category"]] += 1
+    return {"points": [{**p, "categories": dict(p["categories"])} for p in places.values()]}
 
 
 @app.get("/api/alerts")
@@ -265,8 +382,9 @@ def list_alerts(
     source: str = "all",
     q: Optional[str] = None,
     lang: str = "en",
+    hours: Optional[float] = None,
 ):
-    alerts, now = _alerts(source, lang)
+    alerts, now = _alerts(source, lang, hours)
     zones = sorted(({"value": z, "label": zone_name(z, lang)} for z in {a["zone"] for a in alerts}),
                    key=lambda z: z["label"])
     needle = (q or "").strip().lower()
@@ -277,7 +395,7 @@ def list_alerts(
         and a["confidence"] >= min_confidence
         and a["score"] >= min_score
         and (not hybrid_only or a["is_hybrid"])
-        and (not hide_dismissed or not a["feedback"] or a["feedback"]["verdict"] != "false_positive")
+        and (not hide_dismissed or a["verification"] != "disproved")
         and (not needle or needle in _alert_text(a))
     ]
     return {"generated_at": iso(now), "total": len(alerts), "zones": zones, "alerts": [_light(a) for a in filtered]}
@@ -299,15 +417,54 @@ def get_replay(alert_id: str, source: str = "all", lang: str = "en"):
 
 
 class FeedbackRequest(BaseModel):
-    verdict: Literal["confirmed", "false_positive"]
+    # verification status set by the analyst ("false_positive" is the old name of "disproved")
+    verdict: Literal["unverified", "investigating", "partial", "confirmed", "disproved", "false_positive"]
     note: str = Field(default="", max_length=1000)
 
 
 @app.post("/api/alerts/{alert_id}/feedback", dependencies=[Depends(require_admin)])
 def post_feedback(alert_id: str, req: FeedbackRequest, source: str = "all"):
     alert = _find(alert_id, source)
-    db.set_feedback(alert_id, req.verdict, req.note or None, alert["sources"], iso(utcnow()))
-    return {"ok": True, "sources_updated": alert["sources"], "source_stats": db.source_feedback_stats()}
+    verdict = db.norm_verdict(req.verdict)
+    if verdict == "unverified":
+        db.delete_feedback(alert_id)
+    else:
+        db.set_feedback(alert_id, verdict, req.note or None, alert["sources"], iso(utcnow()))
+    return {"ok": True, "verification": verdict, "sources_updated": alert["sources"],
+            "source_stats": db.source_feedback_stats()}
+
+
+class ClassificationRequest(BaseModel):
+    category: Literal["cyber", "disinformation", "political", "infrastructure", "physical", "other"]
+    subcategory: Optional[str] = None
+
+
+@app.post("/api/signals/{signal_id}/classification", dependencies=[Depends(require_admin)])
+def correct_classification(signal_id: str, req: ClassificationRequest):
+    """Analyst correction of a report's category; the automatic category is kept as original_category."""
+    sub = req.subcategory if req.subcategory in SUBCATEGORIES.get(req.category, {}) else None
+    result = db.set_classification(signal_id, req.category, sub)
+    if not result:
+        raise HTTPException(404, "Signal not found")
+    return {"ok": True, **result}
+
+
+_SUMMARIES: dict[tuple, str] = {}
+
+
+@app.get("/api/alerts/{alert_id}/ai-summary", dependencies=[Depends(limit_analyze)])
+def ai_summary(alert_id: str, source: str = "all", lang: str = "en"):
+    """A short plain-language summary written by the LLM from the alert's reports (when an LLM is set up)."""
+    if not config.llm_enabled():
+        raise HTTPException(400, "No LLM configured")
+    alert = _find(alert_id, source, lang)
+    key = (alert_id, alert["signal_count"], norm_lang(lang))
+    if key not in _SUMMARIES:
+        text = summarize_alert(alert, norm_lang(lang))
+        if not text:
+            raise HTTPException(503, "The AI summary is not available right now, please try again later")
+        _SUMMARIES[key] = text
+    return {"summary": _SUMMARIES[key], "model": known_model("analyze")}
 
 
 @app.delete("/api/alerts/{alert_id}/feedback", dependencies=[Depends(require_admin)])
@@ -332,8 +489,8 @@ async def notify_test():
 
 
 @app.get("/api/graph")
-def get_graph(source: str = "all", lang: str = "en"):
-    alerts, _ = _alerts(source, lang)
+def get_graph(source: str = "all", lang: str = "en", hours: Optional[float] = None):
+    alerts, _ = _alerts(source, lang, hours)
     return build_graph(alerts)
 
 
@@ -345,8 +502,9 @@ def list_signals(
     source: str = "all",
     q: Optional[str] = None,
     lang: str = "en",
+    hours: Optional[float] = None,
 ):
-    sigs, _ = _signals(source)
+    sigs, _ = _signals(source, hours)
     sigs = [localize_signal(s, lang) for s in sigs]
     needle = (q or "").strip().lower()
     out = [

@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 
 from .. import config, db
 from ..analyzer.local import analyze_local, merge_entities
+from ..assess import classify_extra
 from ..normalize import build_signal, utcnow
 
 
@@ -24,6 +25,7 @@ def load_seed(now: datetime | None = None) -> int:
         pre = item["analysis"]
         analysis = {
             **local,
+            **classify_extra(pre["category"], item["title"], item["text"]),
             "category": pre["category"],
             "tags": pre.get("tags", []),
             "severity": pre["severity"],

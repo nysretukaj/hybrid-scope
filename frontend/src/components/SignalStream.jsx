@@ -4,7 +4,7 @@ import { CATEGORY_ORDER, timeAgo } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 import { AnalyzerBadge, CategoryBadge, ReliabilityBar } from './ui'
 
-export default function SignalStream({ source, alertsCount, refreshKey }) {
+export default function SignalStream({ source, hours, alertsCount, refreshKey }) {
   const { t, lang } = useI18n()
   const [category, setCategory] = useState('')
   const [q, setQ] = useState('')
@@ -13,11 +13,11 @@ export default function SignalStream({ source, alertsCount, refreshKey }) {
 
   useEffect(() => {
     let alive = true
-    api.signals({ category, q, source, limit: 400 }, lang)
+    api.signals({ category, q, source, hours, limit: 400 }, lang)
       .then((d) => alive && (setData(d), setError(null)))
       .catch((e) => alive && setError(e.message))
     return () => { alive = false }
-  }, [category, q, source, refreshKey, lang])
+  }, [category, q, source, hours, refreshKey, lang])
 
   return (
     <div className="p-4">
@@ -56,13 +56,25 @@ export default function SignalStream({ source, alertsCount, refreshKey }) {
             {data.signals.map((s) => (
               <tr key={s.id} className={`border-b border-slate-800/60 align-top hover:bg-slate-800/30 ${s.category === 'other' ? 'opacity-50' : ''}`}>
                 <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-slate-500">{timeAgo(s.timestamp)}</td>
-                <td className="px-3 py-2"><CategoryBadge category={s.category} small /></td>
+                <td className="px-3 py-2">
+                  <CategoryBadge category={s.category} small />
+                  {s.subcategory && s.subcategory !== 'general' && <div className="mt-0.5 text-[10px] text-slate-400">{t(`sub.${s.subcategory}`)}</div>}
+                </td>
                 <td className="max-w-xl px-3 py-2">
                   {s.url
                     ? <a href={s.url} target="_blank" rel="noreferrer" className="text-slate-200 hover:text-cyan-300">{s.title}</a>
                     : <span className="text-slate-200">{s.title}</span>}
                   {(s.entities?.cves?.length > 0 || s.entities?.actors?.length > 0) && (
                     <div className="mt-0.5 text-[11px] text-slate-500">{[...(s.entities.actors || []), ...(s.entities.cves || [])].join(' · ')}</div>
+                  )}
+                  {(s.duplicate_of || s.stale || (s.claim && s.claim !== 'reported')) && (
+                    <div className="mt-0.5 flex flex-wrap gap-2 text-[10px]">
+                      {s.duplicate_of && <span className="text-slate-400">⧉ {t('ev.dup')}</span>}
+                      {s.stale && <span className="text-orange-300">⏳ {t('ev.stale')}</span>}
+                      {s.claim && s.claim !== 'reported' && (
+                        <span className={s.claim === 'confirmed' ? 'text-emerald-300' : 'text-amber-300'}>{t(`claim.${s.claim}`)}</span>
+                      )}
+                    </div>
                   )}
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 text-xs text-slate-400">{s.zone_label || s.zone || <span className="text-slate-600">{t('s.unresolved')}</span>}</td>

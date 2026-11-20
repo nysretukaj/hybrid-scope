@@ -11,6 +11,7 @@ import time
 from . import config, db
 from .analyzer.llm import STATUS as LLM_STATUS
 from .analyzer.llm import analyze_llm, rate_limited
+from .analyzer import complete_llm
 from .analyzer.local import merge_entities
 
 log = logging.getLogger(__name__)
@@ -48,6 +49,8 @@ async def enrich_signals(ids: list[str]) -> dict:
                         break
                 if result:
                     consecutive_failures = 0
+                    current = {"zone": s["zone"]} if s.get("zone") else None
+                    result = complete_llm(result, s["title"], s["text"], current)
                     result["entities"] = merge_entities(s["entities"], result["entities"])
                     await asyncio.to_thread(db.update_analysis, s["id"], result)
                     STATE["done"] += 1

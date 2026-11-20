@@ -18,7 +18,8 @@ T: dict[str, dict[str, str]] = {
     "cat.disinformation": {"en": "Disinformation", "sq": "Dezinformim", "de": "Desinformation"},
     "cat.cyber": {"en": "Cyber", "sq": "Kibernetik", "de": "Cyber"},
     "cat.infrastructure": {"en": "Infrastructure", "sq": "Infrastrukturë", "de": "Infrastruktur"},
-    "cat.physical": {"en": "Physical / Geopolitical", "sq": "Fizik / Gjeopolitik", "de": "Physisch / Geopolitisch"},
+    "cat.political": {"en": "Political", "sq": "Politik", "de": "Politisch"},
+    "cat.physical": {"en": "Security", "sq": "Siguri", "de": "Sicherheit"},
     "cat.other": {"en": "Not threat-relevant", "sq": "Jo relevant", "de": "Nicht relevant"},
     "level.CRITICAL": {"en": "CRITICAL", "sq": "KRITIK", "de": "KRITISCH"},
     "level.HIGH": {"en": "HIGH", "sq": "I LARTË", "de": "HOCH"},
@@ -163,6 +164,16 @@ T: dict[str, dict[str, str]] = {
         "en": "Increase physical protection and patrols around critical sites in {places}; share sightings with law enforcement.",
         "sq": "Shtoni mbrojtjen fizike dhe patrullimet rreth objekteve kritike në {places}; ndani vëzhgimet me policinë.",
         "de": "Objektschutz und Streifen an kritischen Standorten in {places} verstärken; Sichtungen mit der Polizei teilen.",
+    },
+    "b.action.political": {
+        "en": "Brief the government and election bodies in {places}; document pressure or interference attempts and coordinate a joint diplomatic response with partners.",
+        "sq": "Informoni qeverinë dhe institucionet zgjedhore në {places}; dokumentoni presionet ose ndërhyrjet dhe koordinoni një reagim të përbashkët diplomatik me partnerët.",
+        "de": "Regierung und Wahlbehörden in {places} unterrichten; Druck- oder Einmischungsversuche dokumentieren und eine gemeinsame diplomatische Antwort mit Partnern abstimmen.",
+    },
+    "b.watch.political": {
+        "en": "New statements, funding flows or pressure tactics by {actors} aimed at institutions or elections in {places}",
+        "sq": "Deklarata të reja, financime ose presione nga {actors} që synojnë institucionet ose zgjedhjet në {places}",
+        "de": "Neue Erklärungen, Geldflüsse oder Druckmittel von {actors} gegen Institutionen oder Wahlen in {places}",
     },
     "b.watch.cyber": {
         "en": "New exploitation, access-sale or leak-site activity involving {actors} or {tech}",

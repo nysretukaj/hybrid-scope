@@ -22,23 +22,45 @@ SYSTEM_PROMPT = """You are a senior OSINT analyst specialising in hybrid threats
 Classify the item and extract entities. The text may be in English, Albanian or German.
 Respond with ONLY a JSON object:
 {
-  "category": "cyber" | "disinformation" | "infrastructure" | "physical" | "other",
-  "secondary_categories": [same values, excluding category],
+  "category": "cyber" | "disinformation" | "political" | "infrastructure" | "physical" | "other",
+  "subcategory": one value from the list for that category (see below), or "general",
+  "secondary_categories": [same category values, excluding category],
   "severity": number 0-1 (potential harm if true),
   "confidence": number 0-1 (how sure you are of the classification),
+  "cause": "deliberate" | "accidental" | "natural" | "unknown",
+  "claim": "confirmed" | "alleged" | "opinion" | "reported",
+  "target": "who or what is affected, as named in the text, or empty",
+  "country": "the main country where it happens, in English, or empty",
   "entities": {"actors": [], "orgs": [], "technologies": [], "narratives": []},
   "rationale": "1-2 sentences in English explaining the classification and severity",
   "rationale_sq": "the same rationale in Albanian",
   "rationale_de": "the same rationale in German"
 }
-"physical" covers geopolitical / physical security events (military, sabotage, protests, drones, jamming).
+Subcategories:
+  cyber: ransomware, ddos, data_breach, phishing, espionage, intrusion, vulnerability, malware
+  disinformation: fake_news, deepfake, bot_network, impersonation, coordinated_campaign, propaganda
+  political: foreign_interference, election_interference, coercion, destabilization
+  infrastructure: energy, water, transport, telecom, ics
+  physical: terrorism, organized_crime, border, military, sabotage, unrest, violent_incident
+"physical" is the SECURITY category: border incidents, terrorism, organised crime, civil unrest, violent incidents,
+military activity and physical sabotage relevant to national security.
+"political" = foreign interference, election interference, coercion or pressure by another state, attempts to
+destabilise institutions. Ordinary political criticism, debate, elections, protests by citizens or diplomatic
+disagreement are NOT political threats: use "other".
 "other" = not a security threat (sports, culture, routine politics, product news). Ordinary crime, traffic
 accidents, personal fights and local incidents with no state, political, critical-infrastructure or hostile-actor
 dimension are also "other" (severity <= 0.2). Routine software bugs or patches without exploitation are "cyber" at low severity.
+cause: "deliberate" only if the text gives evidence of intent (an attack, a campaign, sabotage); outages from weather
+are "natural", technical failures and honest mistakes are "accidental"; otherwise "unknown". For disinformation,
+"deliberate" means disinformation and "accidental" means misinformation (false but without evidence of intent).
+claim: "confirmed" if an official or the affected party confirms it, "alleged" if it is a claim, accusation or rumour,
+"opinion" for commentary, otherwise "reported".
 Severity guide: 0.1 routine/no hostile actor, 0.4 notable, 0.7 serious incident, 0.9 major attack with real-world impact.
 Do not invent facts that are not in the text."""
 
-VALID = {"cyber", "disinformation", "infrastructure", "physical", "other"}
+VALID = {"cyber", "disinformation", "political", "infrastructure", "physical", "other"}
+CAUSES = {"deliberate", "accidental", "natural", "unknown"}
+CLAIMS = {"confirmed", "alleged", "opinion", "reported"}
 PREFERRED = {
     "analyze": ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "gemini-2.5-flash", "gemini-2.0-flash",
                 "openai/gpt-oss-20b", "llama-3.1-8b-instant"],
@@ -97,6 +119,42 @@ def rate_limited() -> bool:
     return time.time() < STATUS["rate_limited_until"]
 
 
+SUMMARY_LANG = {"en": "English", "sq": "Albanian", "de": "German"}
+
+
+def summarize_alert(alert: dict, lang: str = "en") -> str | None:
+    """2-3 plain sentences about an alert for non-specialists, written only from its reports."""
+    if not config.llm_enabled() or rate_limited():
+        return None
+    model = resolve_model("analyze")
+    if not model:
+        return None
+    reports = "\n".join(f"- [{s['category']}] {s['title']} ({s.get('source_label') or s['source_name']})"
+                        for s in alert["signals"][-10:])
+    prompt = (f"Region: {alert.get('zone_label') or alert['zone']}\nRisk level: {alert['level']} ({alert['score']}/100), "
+              f"confidence {round(alert['confidence'] * 100)}%\nReports:\n{reports}")
+    payload = {
+        "model": model, "temperature": 0.2,
+        "messages": [
+            {"role": "system", "content": (
+                f"You explain security alerts to people with no technical background. Write 2-3 short, calm sentences "
+                f"in {SUMMARY_LANG.get(lang, 'English')}: what happened, where, and what it may mean. Use only facts from "
+                f"the reports, say clearly when something is not confirmed, and avoid jargon and abbreviations.")},
+            {"role": "user", "content": prompt},
+        ],
+    }
+    try:
+        resp = httpx.post(f"{config.LLM_BASE_URL}/chat/completions", json=payload, headers=_headers(), timeout=45)
+        if resp.status_code == 429:
+            STATUS["rate_limited_until"] = time.time() + min(max(float(resp.headers.get("retry-after", "30") or 30), 5), 300)
+            return None
+        resp.raise_for_status()
+        return str(resp.json()["choices"][0]["message"]["content"]).strip()[:800] or None
+    except Exception as exc:  # noqa: BLE001
+        STATUS["last_error"] = f"{type(exc).__name__}: {exc}"[:200]
+        return None
+
+
 def analyze_llm(title: str, text: str, purpose: str = "analyze") -> dict | None:
     if not config.llm_enabled() or rate_limited():
         return None
@@ -138,8 +196,17 @@ def analyze_llm(title: str, text: str, purpose: str = "analyze") -> dict | None:
         confidence = max(0.0, min(1.0, float(data.get("confidence", 0.5))))
     except (TypeError, ValueError):
         severity, confidence = 0.3, 0.5
+    from ..assess import SUBCATEGORIES  # local import keeps the module light for status endpoints
+
+    sub = str(data.get("subcategory") or "").strip()
+    target = str(data.get("target") or "").strip()[:80]
     return {
         "category": category,
+        "subcategory": sub if sub in SUBCATEGORIES.get(category, {}) or (sub == "general" and category != "other") else None,
+        "cause": data.get("cause") if data.get("cause") in CAUSES else None,
+        "claim": data.get("claim") if data.get("claim") in CLAIMS else None,
+        "target": target or None,
+        "country": str(data.get("country") or "").strip()[:60] or None,
         "tags": [c for c in data.get("secondary_categories") or [] if c in VALID and c not in (category, "other")],
         "severity": round(severity, 2),
         "confidence": round(confidence, 2),

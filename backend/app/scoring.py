@@ -62,7 +62,8 @@ def score_alert(signals: list[dict], categories: list[str], is_hybrid: bool, cor
     components = {
         "severity": (0.6 * max(sev) + 0.4 * mean(sev), "ex.severity",
                      {"max": f"{max(sev):.2f}", "mean": f"{mean(sev):.2f}", "n": len(signals)}),
-        "hybrid": ((n_cats - 1) / 3, "ex.hybrid.yes" if is_hybrid else "ex.hybrid.no", {"n": len(categories)}),
+        # full points from 4 linked domains on (5 domains exist; 4 already means a broad campaign)
+        "hybrid": (min(1.0, (n_cats - 1) / 3), "ex.hybrid.yes" if is_hybrid else "ex.hybrid.no", {"n": len(categories)}),
         "corroboration": (min(1.0, (corroborating_sources - 1) / 4), "ex.corroboration", {"k": corroborating_sources}),
         "recency": (recency_weight(latest_age), "ex.recency",
                     {"h": f"{latest_age:.0f}", "hl": f"{RECENCY_HALF_LIFE_HOURS:.0f}"}),

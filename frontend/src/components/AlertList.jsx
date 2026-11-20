@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { cat, level, timeAgo } from '../lib/format'
+import { VERIFICATION, cat, level, timeAgo } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 import { HybridBadge, LevelBadge, LiveBadge } from './ui'
 
@@ -21,12 +21,13 @@ export default function AlertList({ alerts, selectedId, onSelect, total }) {
           const l = level(a.level)
           const mobileHidden = !showAll && i >= MOBILE_LIMIT
           const selected = a.id === selectedId
-          const verdict = a.feedback?.verdict
+          const verdict = a.verification || 'unverified'
+          const vstyle = VERIFICATION[verdict]
           return (
             <button
               key={a.id}
               onClick={() => onSelect(a.id)}
-              className={`${mobileHidden ? 'hidden lg:block' : ''} group relative w-full overflow-hidden rounded-lg py-2.5 pl-4 pr-3 text-left ring-1 transition ${selected ? 'bg-slate-800/80 ring-slate-500' : 'bg-slate-900/40 ring-slate-800 hover:bg-slate-800/50 hover:ring-slate-700'} ${verdict === 'false_positive' ? 'opacity-50' : ''}`}
+              className={`${mobileHidden ? 'hidden lg:block' : ''} group relative w-full overflow-hidden rounded-lg py-2.5 pl-4 pr-3 text-left ring-1 transition ${selected ? 'bg-slate-800/80 ring-slate-500' : 'bg-slate-900/40 ring-slate-800 hover:bg-slate-800/50 hover:ring-slate-700'} ${verdict === 'disproved' ? 'opacity-50' : ''}`}
             >
               <span className="absolute inset-y-0 left-0 w-1" style={{ background: l.color, boxShadow: selected ? `0 0 12px ${l.color}` : 'none' }} />
               <div className="flex items-start gap-3">
@@ -35,8 +36,11 @@ export default function AlertList({ alerts, selectedId, onSelect, total }) {
                     <LevelBadge value={a.level} />
                     {a.is_hybrid && <HybridBadge />}
                     {!a.synthetic && <LiveBadge />}
-                    {verdict === 'confirmed' && <span className="text-[11px] text-emerald-400" title={t('d.confirmed')}>✓</span>}
-                    {verdict === 'false_positive' && <span className="text-[11px] text-slate-400" title={t('d.dismissed')}>✗</span>}
+                    {verdict !== 'unverified' && (
+                      <span className="rounded-full px-1.5 text-[10px] ring-1" style={{ color: vstyle.color, '--tw-ring-color': `${vstyle.color}66` }}>
+                        {vstyle.icon} {t(`v.${verdict}`)}
+                      </span>
+                    )}
                   </div>
                   <div className="mt-1.5 truncate text-sm font-medium text-slate-100">{a.zone_label || a.zone}</div>
                   <div className="truncate text-xs text-slate-400" title={a.headline}>{a.headline}</div>
