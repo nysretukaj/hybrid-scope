@@ -135,7 +135,7 @@ function DensityLayer({ points }) {
   ))
 }
 
-export default function ThreatMap({ alerts, selectedId, detail, onSelect, offline, lastIngest, source, hours, refreshKey, tall, compact }) {
+export default function ThreatMap({ alerts, selectedId, detail, onSelect, offline, lastIngest, source, hours, refreshKey }) {
   const { t, lang } = useI18n()
   const [density, setDensity] = useState(false)
   const [points, setPoints] = useState([])
@@ -209,7 +209,7 @@ export default function ThreatMap({ alerts, selectedId, detail, onSelect, offlin
   return (
     <div className={`panel relative overflow-hidden ${fullscreen ? 'map-fullscreen' : ''}`}>
       <MapContainer center={[48, 18]} zoom={4} minZoom={2} maxZoom={useVector ? 8 : 17} worldCopyJump zoomControl={false}
-        className={`w-full ${fullscreen ? 'h-full' : tall ? 'h-[calc(100vh-150px)] min-h-[380px]' : compact ? 'h-[260px] sm:h-[320px]' : 'h-[300px] sm:h-[380px] xl:h-[460px]'}`}>
+        className={`w-full ${fullscreen ? 'h-full' : 'h-[300px] sm:h-[380px] xl:h-[460px]'}`}>
         <ResizeOn value={fullscreen} />
         <Interactions fullscreen={fullscreen} />
         <ZoomControl position="bottomright" />

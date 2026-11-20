@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import AlertDetail from './components/AlertDetail'
 import AlertList from './components/AlertList'
 import AnalyzePanel from './components/AnalyzePanel'
 import Filters from './components/Filters'
-import Header from './components/Header'
-import { HelpPage, Home } from './components/Home'
+import Header, { BottomNav } from './components/Header'
+import { Onboarding, StatusBanner } from './components/StatusBanner'
+import KpiBar from './components/KpiBar'
 import NetworkGraph from './components/NetworkGraph'
 import SignalStream from './components/SignalStream'
 import StatsPanel from './components/StatsPanel'
@@ -13,49 +14,27 @@ import { api } from './lib/api'
 import { useI18n } from './lib/i18n'
 
 const POLL_MS = 30000
-const PAGES =['alerts', 'map', 'stats', 'news', 'analyze', 'network', 'help']
 
-/** Pages live in the address (#/alerts, #/alert/<id>), so the phone's Back button works too. */
-function parseRoute() {
-  const hash = window.location.hash
-  const legacy = hash.match(/alert=([\w-]+)/) // links shared before the menu existed
-  if (legacy) return { page: 'alert', id: legacy[1] }
-  const [, page, id] = hash.match(/^#\/([\w-]+)(?:\/([\w-]+))?/) || []
-  if (page === 'alert' && id) return { page: 'alert', id }
-  return { page: PAGES.includes(page) ? page : 'home' }
+function hashAlert() {
+  const m = window.location.hash.match(/alert=([\w-]+)/)
+  return m ? m[1] : null
 }
 
 export default function App() {
   const { t, lang } = useI18n()
-  const [route, setRoute] = useState(parseRoute)
-  const internalNavs = useRef(0)
+  const [view, setView] = useState('board')
   // hours: 0 = the whole 10-day window
   const [filters, setFilters] = useState({ q: '', category: '', zone: '', source: 'all', hours: 0, min_confidence: 0, hybrid_only: false, hide_dismissed: false })
   const [data, setData] = useState({ alerts: [], zones: [], total: 0 })
   const [stats, setStats] = useState(null)
   const [health, setHealth] = useState(null)
+  const [selectedId, setSelectedId] = useState(hashAlert)
   const [detail, setDetail] = useState(null)
-  const [detailState, setDetailState] = useState('idle') // idle | loading | missing
+  const [detailLoading, setDetailLoading] = useState(false)
   const [tick, setTick] = useState(0)
   const [busy, setBusy] = useState(null)
   const [toast, setToast] = useState(null)
   const [error, setError] = useState(null)
-  const alertId = route.page === 'alert' ? route.id : null
-
-  useEffect(() => {
-    const onHash = () => { setRoute(parseRoute()); window.scrollTo({ top: 0 }) }
-    window.addEventListener('hashchange', onHash)
-    return () => window.removeEventListener('hashchange', onHash)
-  }, [])
-
-  const go = (path) => {
-    internalNavs.current += 1
-    window.location.hash = path
-  }
-  const back = () => {
-    if (internalNavs.current > 0) { internalNavs.current -= 1; window.history.back() } else go('/')
-  }
-  const openAlert = (id) => go(`/alert/${id}`)
 
   const refresh = useCallback(async () => {
     try {
@@ -64,6 +43,7 @@ export default function App() {
       setStats(s)
       setHealth(h)
       setError(null)
+      setSelectedId((prev) => (a.alerts.some((x) => x.id === prev) ? prev : a.alerts[0]?.id ?? null))
       setTick((x) => x + 1)
     } catch (e) {
       setError(e.message)
@@ -73,21 +53,25 @@ export default function App() {
   const enriching = !!health?.llm?.enrich?.running
   useEffect(() => {
     refresh()
-    // poll faster while the LLM is upgrading live signals, so the pages visibly update
+    // poll faster while the LLM is upgrading live signals, so the board visibly updates
     const id = setInterval(refresh, enriching ? 6000 : POLL_MS)
     return () => clearInterval(id)
   }, [refresh, enriching])
 
   useEffect(() => {
-    if (!alertId) { setDetail(null); setDetailState('idle'); return }
+    if (!selectedId) { setDetail(null); return }
     let alive = true
-    setDetailState((s) => (detail?.id === alertId ? s : 'loading'))
-    api.alert(alertId, filters.source, lang)
-      .then((d) => { if (alive) { setDetail(d); setDetailState('idle') } })
-      .catch(() => { if (alive) { setDetail(null); setDetailState('missing') } })
+    setDetailLoading(true)
+    api.alert(selectedId, filters.source, lang)
+      .then((d) => alive && setDetail(d))
+      .catch(() => alive && setDetail(null))
+      .finally(() => alive && setDetailLoading(false))
     return () => { alive = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [alertId, filters.source, tick, lang])
+  }, [selectedId, filters.source, tick, lang])
+
+  useEffect(() => {
+    if (selectedId) window.history.replaceState(null, '', `#alert=${selectedId}`)
+  }, [selectedId])
 
   const notify = (msg, kind = 'ok') => {
     setToast({ msg, kind })
@@ -115,7 +99,7 @@ export default function App() {
 
   const onFeedback = async (verdict, note) => {
     try {
-      const r = await api.feedback(alertId, filters.source, verdict, note)
+      const r = await api.feedback(selectedId, filters.source, verdict, note)
       notify(t('t.verification', { s: t(`v.${r.verification}`) }))
       await refresh()
     } catch (e) {
@@ -135,7 +119,7 @@ export default function App() {
 
   const onNotify = async () => {
     try {
-      const r = await api.notify(alertId, filters.source)
+      const r = await api.notify(selectedId, filters.source)
       const ok = r.results.filter((x) => x.ok).map((x) => x.channel)
       notify(ok.length ? `${t('d.sent')}: ${ok.join(', ')}` : r.results.map((x) => `${x.channel}: ${x.error}`).join(' · '), ok.length ? 'ok' : 'err')
     } catch (e) {
@@ -143,69 +127,76 @@ export default function App() {
     }
   }
 
-  const setHours = (h) => setFilters((f) => ({ ...f, hours: h }))
-  const mapProps = {
-    offline: health ? !!health.offline : null, lastIngest: health?.last_ingest?.finished_at,
-    source: filters.source, hours: filters.hours, refreshKey: tick,
+  const openAlert = (id) => {
+    setSelectedId(id)
+    setView('board')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // On phones the details sit below the list, so bring them into view when an alert is chosen.
+  const selectAlert = (id) => {
+    setSelectedId(id)
+    if (window.innerWidth < 1024) {
+      setTimeout(() => document.getElementById('alert-detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150)
+    }
+  }
+
+  const openFromBanner = (id) => {
+    setSelectedId(id)
+    setTimeout(() => document.getElementById('alert-detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150)
   }
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <Header page={route.page} onHome={() => go('/')} onBack={back} health={health} busy={busy} onIngest={onIngest}
-        title={route.page === 'alert' ? (detail?.zone_label || '') : ''} />
+    <div className="has-bottom-nav flex min-h-screen flex-col">
+      <Header view={view} setView={setView} health={health} busy={busy} onIngest={onIngest} />
       {error && <div className="mx-4 mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300 ring-1 ring-red-500/30">{t('t.backend', { e: error })}</div>}
+      <KpiBar stats={stats} />
 
-      <main className="mx-auto w-full max-w-6xl flex-1 p-3 sm:p-4">
-        {route.page === 'home' && <Home alerts={data.alerts} stats={stats} onGo={go} onOpenAlert={openAlert} />}
+      {view === 'board' && (
+        <div className="space-y-3 px-3 pt-3 sm:px-4">
+          <StatusBanner alerts={data.alerts} onOpen={openFromBanner} />
+          <Onboarding />
+        </div>
+      )}
 
-        {route.page === 'alerts' && (
-          <div className="mx-auto max-w-3xl space-y-3">
+      {view === 'board' && (
+        // Phone order: map → list → details. Desktop: list on the left, map above details on the right.
+        <main className="grid flex-1 grid-cols-1 items-start gap-4 p-3 sm:p-4 lg:grid-cols-12">
+          <section className="min-w-0 lg:col-span-8 lg:col-start-5 lg:row-start-1 xl:col-span-9 xl:col-start-4">
+            <ThreatMap alerts={data.alerts} selectedId={selectedId} detail={detail} onSelect={selectAlert}
+              offline={health ? !!health.offline : null} lastIngest={health?.last_ingest?.finished_at}
+              source={filters.source} hours={filters.hours} refreshKey={tick} />
+          </section>
+          <section className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-[76px] lg:col-span-4 lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:h-[calc(100vh-92px)] xl:col-span-3">
             <Filters filters={filters} setFilters={setFilters} zones={data.zones} />
-            <AlertList alerts={data.alerts} total={data.total} onSelect={openAlert} />
-          </div>
-        )}
+            <AlertList alerts={data.alerts} total={data.total} selectedId={selectedId} onSelect={selectAlert} />
+          </section>
+          <section id="alert-detail" className="min-w-0 scroll-mt-3 lg:col-span-8 lg:col-start-5 lg:row-start-2 lg:scroll-mt-24 xl:col-span-9 xl:col-start-4">
+            <AlertDetail
+              key={detail?.id}
+              alert={detail}
+              loading={detailLoading || (!!selectedId && !detail)}
+              source={filters.source}
+              notifyEnabled={(health?.notify_channels || []).length > 0}
+              onFeedback={onFeedback}
+              onNotify={onNotify}
+              onReclassify={onReclassify}
+              publicMode={!!health?.public_mode}
+              aiEnabled={!!health?.llm_enabled && !health?.offline}
+            />
+          </section>
+        </main>
+      )}
+      {view === 'network' && <NetworkGraph source={filters.source} refreshKey={tick} onOpenAlert={openAlert} />}
+      {view === 'signals' && <SignalStream source={filters.source} hours={filters.hours} alertsCount={data.total} refreshKey={tick} />}
+      {view === 'stats' && <StatsPanel source={filters.source} hours={filters.hours} refreshKey={tick}
+        setHours={(h) => setFilters((f) => ({ ...f, hours: h }))} />}
+      {view === 'analyze' && <AnalyzePanel />}
 
-        {route.page === 'map' && (
-          <div className="space-y-2">
-            <p className="text-sm text-slate-400">{t('page.mapHint')}</p>
-            <ThreatMap alerts={data.alerts} onSelect={openAlert} tall {...mapProps} />
-          </div>
-        )}
-
-        {route.page === 'alert' && (
-          <div className="mx-auto max-w-4xl">
-            {detailState === 'missing' ? (
-              <div className="panel p-10 text-center text-slate-400">
-                {t('page.alertGone')}
-                <div className="mt-4"><button onClick={() => go('/alerts')} className="rounded-lg bg-slate-800 px-4 py-2 text-sm text-slate-200">{t('page.toAlerts')}</button></div>
-              </div>
-            ) : (
-              <AlertDetail
-                key={detail?.id}
-                alert={detail?.id === alertId ? detail : null}
-                loading
-                source={filters.source}
-                notifyEnabled={(health?.notify_channels || []).length > 0}
-                onFeedback={onFeedback}
-                onNotify={onNotify}
-                onReclassify={onReclassify}
-                publicMode={!!health?.public_mode}
-                aiEnabled={!!health?.llm_enabled && !health?.offline}
-                mapProps={mapProps}
-              />
-            )}
-          </div>
-        )}
-
-        {route.page === 'stats' && <StatsPanel source={filters.source} hours={filters.hours} refreshKey={tick} setHours={setHours} />}
-        {route.page === 'news' && <SignalStream source={filters.source} hours={filters.hours} alertsCount={data.total} refreshKey={tick} />}
-        {route.page === 'analyze' && <AnalyzePanel />}
-        {route.page === 'network' && <NetworkGraph source={filters.source} refreshKey={tick} onOpenAlert={openAlert} />}
-        {route.page === 'help' && <HelpPage />}
-      </main>
+      <BottomNav view={view} setView={setView} />
 
       {toast && (
-        <div className={`fixed bottom-4 left-3 right-3 z-[3000] max-w-md rounded-lg px-4 py-3 text-sm shadow-xl ring-1 sm:left-auto sm:right-4 ${toast.kind === 'err' ? 'bg-red-950 text-red-200 ring-red-500/40' : toast.kind === 'warn' ? 'bg-amber-950 text-amber-100 ring-amber-500/40' : 'bg-slate-900 text-slate-100 ring-slate-600'}`}>
+        <div className={`fixed bottom-20 left-3 right-3 z-[3000] sm:left-auto sm:right-4 lg:bottom-4 max-w-md rounded-lg px-4 py-3 text-sm shadow-xl ring-1 ${toast.kind === 'err' ? 'bg-red-950 text-red-200 ring-red-500/40' : toast.kind === 'warn' ? 'bg-amber-950 text-amber-100 ring-amber-500/40' : 'bg-slate-900 text-slate-100 ring-slate-600'}`}>
           {toast.msg}
         </div>
       )}
