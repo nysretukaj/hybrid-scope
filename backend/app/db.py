@@ -193,10 +193,14 @@ def fetch_unenriched_live(limit: int) -> list[str]:
 def update_analysis(signal_id: str, analysis: dict, only_if_analyzer: str | None = None) -> bool:
     """Store a re-analysis. Signals an analyst has corrected by hand are never overwritten; with
     only_if_analyzer the update happens only while the stored analyzer is still that one."""
+    from .ingest.policy import apply_policies  # local import: policy must win over any analyzer
+
     with get_conn() as conn:
-        row = conn.execute("SELECT i18n, analyzer FROM signals WHERE id = ?", (signal_id,)).fetchone()
+        row = conn.execute("SELECT i18n, analyzer, source_type, title, text FROM signals WHERE id = ?",
+                           (signal_id,)).fetchone()
         if not row or row[1] == "analyst" or (only_if_analyzer and row[1] != only_if_analyzer):
             return False
+        analysis = apply_policies({"source_type": row[2], "title": row[3], "text": row[4]}, dict(analysis))
         i18n = json.loads(row[0]) if row and row[0] else {}
         # the new rationale replaces the old one in every language; other translated fields are kept
         for lang in ("sq", "de"):

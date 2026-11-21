@@ -30,18 +30,28 @@ Tests: `cd backend; .\.venv\Scripts\python -m pytest -q`
 ## How it works
 
 **1. Ingestion & normalization** (`backend/app/ingest/`)
-Live sources (42, all public; `backend/app/config.py`):
+Live sources (63, all public; `backend/app/config.py`):
 
 | Kind | Sources |
 |---|---|
 | Kosovo / Albania (Albanian) | Koha, Kallxo, Telegrafi, DW Shqip, Prishtina Insight, KosovaPress, Insajderi, Reporteri, Gazeta Express, Euronews Albania |
 | Fact-checkers & disinformation research | Hibrid.info (Kosovo), Faktoje (Albania), CORRECTIV (de), StopFake, EUvsDisinfo, Bellingcat |
-| Official & international | KOS-CERT and the Government of Kosovo (read from their websites), CERT-EU, NCSC UK, Europol, UN News (Europe, peace & security) |
+| State portals | Kosovo: Government (website), Presidency, Police, KOS-CERT (website) · Albania: State Police · Serbia: Government of Serbia |
+| Official & international | CERT-EU, NCSC UK, Europol, UN News (Europe, peace & security) |
+| Organised crime & civil society | OCCRP, GI-TOC, KRIK, BIRN Albania (Reporter.al), CRTA, Demokracia Plus; Serbian fact-checkers Raskrikavanje, Istinomer, FakeNews Tragač |
+| Serbian media | N1, Danas, KoSSev; close to the government (low reliability): Politika, Kosovo Online, Novosti |
+| Foreign state media, monitored for narratives only | Sputnik Srbija, RT Balkan (public Telegram channel). Whatever they report is recorded as a propaganda narrative (`disinformation`, claim `alleged`), never as a confirmed event (`ingest/policy.py`, enforced even after an LLM re-analysis) |
 | Cyber security | The Record, SANS ISC, BleepingComputer, The Hacker News, Krebs on Security, SecurityWeek, Dark Reading, CyberScoop, heise Security |
 | Incident databases | CISA Known Exploited Vulnerabilities, ransomware.live (gangs' leak-site claims, marked as unconfirmed; no links to leak sites) |
 | Regional & world news | Balkan Insight, tagesschau, DW Deutsch, GDELT DOC API |
 | Natural hazards | GDACS (earthquakes, floods: tells outages from disasters apart from attacks) |
 | Public social media (low reliability, early indicators only) | Mastodon #disinformation, #cybersecurity, #Kosovo |
+
+Serbian-language reports are read by the local AI (Ollama); the keyword rules cover Albanian, English and
+German. Each ingest queues `SERBIAN_LOCAL_AI_PER_INGEST` (default 15) of them, reports about Kosovo first,
+then state media. Public Telegram channels are read from the public web preview (`ingest/telegram.py`,
+no account); channels of hacktivist groups can be added to `TELEGRAM_CHANNELS`, but Telegram closes most of
+them quickly. Criminal forums and the dark web are deliberately not read.
 
 Sites without a feed are read politely (`ingest/scrape.py`): robots.txt is respected, at most 8 new
 articles per site and run, one request per second, and only the page's own title, summary, picture and

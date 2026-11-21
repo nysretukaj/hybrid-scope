@@ -176,11 +176,110 @@ def test_fact_checker_articles_with_indicators_are_disinformation():
     assert not apply_fact_check_hint(news, analyze_local(news["title"], news["text"]))
 
 
+# --- Telegram, state media, Serbian sources ----------------------------------------------
+TG_PAGE = """<div class="tgme_channel_info">RT Balkan</div>
+<div class="tgme_widget_message_wrap"><div class="tgme_widget_message js-widget_message" data-post="rtbalkan/101">
+<a class="tgme_widget_message_photo_wrap" style="width:800px;background-image:url('https://cdn4.telesco.pe/file/abc.jpg')"></a>
+<div class="tgme_widget_message_text js-message_text" dir="auto">Albanski <b>teroristi</b> prete Srbima na severu Kosova,<br/>tvrdi izvor.</div>
+<time datetime="2026-11-21T10:22:29+00:00" class="time">10:22</time></div></div>
+<div class="tgme_widget_message js-widget_message" data-post="rtbalkan/102"><div class="tgme_widget_message_text" dir="auto">ok</div></div>"""
+TG_SOURCE = {"name": "RT Balkan (Telegram)", "channel": "rtbalkan", "type": "state-media (sr)", "reliability": 0.2, "lang": "sr"}
+
+
+def test_telegram_preview_is_parsed():
+    from app.ingest.telegram import parse_channel
+
+    items = parse_channel(TG_PAGE, TG_SOURCE)
+    assert len(items) == 1  # the 2-letter post is skipped
+    post = items[0]
+    assert post["url"] == "https://t.me/rtbalkan/101" and post["image_url"] == "https://cdn4.telesco.pe/file/abc.jpg"
+    assert post["text"].startswith("Albanski teroristi prete Srbima") and post["timestamp"].year == 2026
+
+
+def test_telegram_reader_respects_robots(fresh):
+    from app.ingest.telegram import fetch_telegram
+
+    def handler(request):
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text="User-agent: *\nDisallow: /s/")
+        return httpx.Response(200, text=TG_PAGE)
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+            return await fetch_telegram(c, TG_SOURCE)
+
+    with pytest.raises(PermissionError):
+        asyncio.run(run())
+
+
+def test_foreign_state_media_claims_are_narratives_not_events():
+    from app.ingest.policy import apply_policies
+
+    item = {"source_type": "state-media (sr)", "title": "Drone attack on a power plant", "text": "Drones attacked a power plant."}
+    a = {"category": "physical", "tags": ["infrastructure"], "severity": 0.8, "confidence": 0.8, "claim": "confirmed",
+         "cause": "deliberate", "rationale": "LLM says it happened", "i18n": {}}
+    apply_policies(item, a)
+    assert a["category"] == "disinformation" and a["subcategory"] == "propaganda"
+    assert a["tags"][0] == "physical" and a["claim"] == "alleged" and a["cause"] == "unknown"
+    assert a["rationale"].startswith("Published by foreign state-controlled media")
+    apply_policies(item, a)  # idempotent: the note is not added twice
+    assert a["rationale"].count("Published by foreign state-controlled media") == 1
+    other = {"category": "other", "tags": [], "severity": 0.1, "confidence": 0.5, "rationale": "", "i18n": {}}
+    assert apply_policies(item, other)["category"] == "other"  # weather news stays weather news
+
+
+def test_llm_relabel_cannot_undo_the_state_media_rule(fresh):
+    from app.normalize import build_signal, utcnow
+
+    sig = build_signal(source_name="Sputnik Srbija", source_type="state-media (sr)", reliability=0.2,
+                       title="Napad na Srbe", text="Tekst.", url="https://e.org/s1", timestamp=utcnow(),
+                       analysis={"category": "other", "analyzer": "local-nlp"})
+    fresh.insert_signals([sig])
+    llm = {"category": "physical", "tags": [], "severity": 0.8, "confidence": 0.9, "analyzer": "ollama:gemma3:4b",
+           "rationale": "An attack took place.", "entities": {}, "cause": "deliberate", "claim": "confirmed"}
+    assert fresh.update_analysis(sig["id"], llm)
+    stored = fresh.fetch_signal(sig["id"])
+    assert stored["category"] == "disinformation" and stored["claim"] == "alleged" and stored["tags"] == ["physical"]
+
+
+def test_serbian_reports_go_to_the_local_ai(fresh, monkeypatch):
+    from app import main
+    from app.ml import jobs, ollama
+    from app.normalize import build_signal, utcnow
+
+    sr = build_signal(source_name="N1 Srbija", source_type="news (sr)", reliability=0.7, title="Vest", text="Tekst.",
+                      url="https://e.org/sr", timestamp=utcnow(), analysis={"category": "other"})
+    sq = build_signal(source_name="Koha", source_type="news (sq)", reliability=0.7, title="Lajm", text="Tekst.",
+                      url="https://e.org/sq", timestamp=utcnow(), analysis={"category": "other"})
+    about_kosovo = build_signal(source_name="Danas", source_type="news (sr)", reliability=0.7, title="Napetost u Kosovskoj Mitrovici",
+                                text="Tekst.", url="https://e.org/sr2", timestamp=utcnow() - timedelta(hours=3),
+                                analysis={"category": "other"})
+    sputnik = build_signal(source_name="Sputnik Srbija", source_type="state-media (sr)", reliability=0.2, title="Vest",
+                           text="Tekst.", url="https://e.org/sr3", timestamp=utcnow() - timedelta(hours=1),
+                           analysis={"category": "other"})
+    fresh.insert_signals([sr, sq, about_kosovo, sputnik])
+    # Kosovo first, then state media, then the rest; Albanian sources are not queued
+    assert main.serbian_ids([sr["id"], sq["id"], about_kosovo["id"], sputnik["id"]]) == [about_kosovo["id"], sputnik["id"], sr["id"]]
+    queued = []
+    monkeypatch.setattr(ollama, "chat_model", lambda: "gemma3:4b")
+    monkeypatch.setattr(jobs, "start_label", lambda ids: queued.extend(ids) or True)
+    assert main.start_serbian_local_ai([sr["id"]]) == 1 and queued == [sr["id"]]
+    monkeypatch.setattr(ollama, "chat_model", lambda: None)
+    assert main.start_serbian_local_ai([sr["id"]]) == 0  # without Ollama nothing is queued
+
+
 def test_every_configured_source_is_well_formed():
     import re
 
-    names = [f["name"] for f in config.RSS_FEEDS] + [s["name"] for s in config.SCRAPE_SOURCES]
+    names = ([f["name"] for f in config.RSS_FEEDS] + [s["name"] for s in config.SCRAPE_SOURCES]
+             + [t["name"] for t in config.TELEGRAM_CHANNELS])
     assert len(names) == len(set(names))
+    from app.ingest.policy import role_of
+
+    # foreign state media are always low reliability and handled as narratives
+    for s in [*config.RSS_FEEDS, *config.TELEGRAM_CHANNELS]:
+        if role_of(s["type"]) == "state-media":
+            assert s["reliability"] <= 0.3
     for f in config.RSS_FEEDS:
         assert f["url"].startswith("https://") and 0 < f["reliability"] <= 1
     for s in config.SCRAPE_SOURCES:
