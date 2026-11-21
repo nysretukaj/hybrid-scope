@@ -109,7 +109,43 @@ RSS_FEEDS = [
     {"name": "Mastodon #cybersecurity", "url": "https://mastodon.social/tags/cybersecurity.rss", "type": "social",
      "reliability": 0.4},
     {"name": "Mastodon #Kosovo", "url": "https://mastodon.social/tags/kosovo.rss", "type": "social", "reliability": 0.4},
+    # --- State portals: Kosovo, Albania, Serbia ---
+    {"name": "Presidenca e Kosovës", "url": "https://president-ksgov.net/feed/", "type": "official (sq)", "reliability": 0.85},
+    {"name": "Policia e Kosovës", "url": "https://www.kosovopolice.com/feed/", "type": "official (sq)", "reliability": 0.9},
+    {"name": "Policia e Shtetit (Shqipëri)", "url": "https://www.asp.gov.al/feed/", "type": "official (sq)", "reliability": 0.9},
+    # official, but of a party to the Kosovo-Serbia dispute: its claims about Kosovo are weighed accordingly
+    {"name": "Vlada Srbije", "url": "https://www.srbija.gov.rs/rss", "type": "official (sr)", "reliability": 0.7, "lang": "sr"},
+    # --- Organised crime, investigative journalism and civil society ---
+    {"name": "OCCRP", "url": "https://www.occrp.org/en/feed", "type": "investigative", "reliability": 0.9},
+    {"name": "GI-TOC", "url": "https://globalinitiative.net/feed/", "type": "research", "reliability": 0.85},
+    {"name": "KRIK", "url": "https://www.krik.rs/feed/", "type": "investigative (sr)", "reliability": 0.85, "lang": "sr"},
+    {"name": "BIRN Albania (Reporter.al)", "url": "https://www.reporter.al/feed/", "type": "investigative (sq)", "reliability": 0.8},
+    {"name": "CRTA", "url": "https://crta.rs/feed/", "type": "ngo (sr)", "reliability": 0.8, "lang": "sr"},
+    {"name": "Demokracia Plus", "url": "https://dplus.org/feed/", "type": "ngo (sq)", "reliability": 0.8},
+    {"name": "Raskrikavanje", "url": "https://www.raskrikavanje.rs/feed/", "type": "fact-check (sr)", "reliability": 0.85, "lang": "sr"},
+    {"name": "Istinomer", "url": "https://www.istinomer.rs/feed/", "type": "fact-check (sr)", "reliability": 0.8, "lang": "sr"},
+    {"name": "FakeNews Tragač", "url": "https://fakenews.rs/feed/", "type": "fact-check (sr)", "reliability": 0.8, "lang": "sr"},
+    # --- Serbian media ---
+    {"name": "N1 Srbija", "url": "https://n1info.rs/feed/", "type": "news (sr)", "reliability": 0.75, "lang": "sr"},
+    {"name": "Danas", "url": "https://www.danas.rs/feed/", "type": "news (sr)", "reliability": 0.7, "lang": "sr"},
+    {"name": "KoSSev", "url": "https://kossev.info/feed/", "type": "news (sr)", "reliability": 0.65, "lang": "sr"},
+    # close to the Serbian government: real events, but framing to watch -> low reliability
+    {"name": "Politika", "url": "https://www.politika.rs/rss/", "type": "state-aligned (sr)", "reliability": 0.5, "lang": "sr"},
+    {"name": "Kosovo Online", "url": "https://www.kosovo-online.com/rss.xml", "type": "state-aligned (sr)", "reliability": 0.4, "lang": "sr"},
+    {"name": "Novosti", "url": "https://www.novosti.rs/rss/vesti", "type": "state-aligned (sr)", "reliability": 0.35, "lang": "sr"},
+    # Russian state media: monitored for narratives only, never taken as fact (see ingest/policy.py)
+    {"name": "Sputnik Srbija", "url": "https://lat.sputnikportal.rs/export/rss2/archive/index.xml", "type": "state-media (sr)",
+     "reliability": 0.2, "lang": "sr"},
 ]
+
+# Public Telegram channels, read from the public web preview (t.me/s/<channel>), no account. Channels of
+# hacktivist/DDoS groups can be added here when they are public; Telegram closes many of them quickly.
+TELEGRAM_CHANNELS = [
+    {"name": "RT Balkan (Telegram)", "channel": "rtbalkan", "type": "state-media (sr)", "reliability": 0.2, "lang": "sr"},
+]
+# Reports in Serbian are understood by the local AI (the keyword rules cover sq/en/de): this many new
+# Serbian reports per ingest are queued for it, threat-looking ones first.
+SERBIAN_LOCAL_AI_PER_INGEST = int(os.getenv("SERBIAN_LOCAL_AI_PER_INGEST", "15"))
 
 # Ransomware victims announced by the gangs on their leak sites (via ransomware.live). These are the
 # criminals' own claims: low reliability, "alleged"; we link to ransomware.live, never to the leak sites.

@@ -1,6 +1,7 @@
 """HybridScope API."""
 import asyncio
 import logging
+import re
 import secrets
 import time
 from collections import Counter, defaultdict, deque
@@ -80,6 +81,36 @@ def start_enrichment(ids: list[str]) -> bool:
     return True
 
 
+SERBIAN_SOURCES = {s["name"] for s in [*config.RSS_FEEDS, *config.TELEGRAM_CHANNELS] if s.get("lang") == "sr"}
+
+
+# Only used to ORDER the local-AI queue (the local AI does the reading): place names in Latin and Cyrillic.
+_KOSOVO_MENTION = re.compile(r"kosov|косов|prišt|pristin|приштин|mitrovic|митровиц|kfor", re.I)
+_STATE_TYPES = ("state-media", "state-aligned")
+
+
+def serbian_ids(ids: list[str]) -> list[str]:
+    """New reports from Serbian-language sources, most relevant first: those about Kosovo, then
+    state-controlled or state-aligned media, then the rest; newest first within each group."""
+    sigs = [s for s in db.fetch_by_ids(ids) if s["source_name"] in SERBIAN_SOURCES]
+
+    def rank(s):
+        about_kosovo = bool(_KOSOVO_MENTION.search(f"{s['title']} {s['text']}"))
+        state = str(s.get("source_type", "")).startswith(_STATE_TYPES)
+        return (not about_kosovo, not state)
+
+    return [s["id"] for s in sorted(sorted(sigs, key=lambda s: s["timestamp"], reverse=True), key=rank)]
+
+
+def start_serbian_local_ai(ids: list[str]) -> int:
+    """Serbian is read by the local AI only (the keyword rules cover Albanian, English and German).
+    Returns how many reports were queued (0 when Ollama is not running or another job is busy)."""
+    queue = ids[: config.SERBIAN_LOCAL_AI_PER_INGEST]
+    if not queue or not ollama.chat_model():
+        return 0
+    return len(queue) if jobs.start_label(queue) else 0
+
+
 def start_model_check(ids: list[str]) -> bool:
     """A trained model on embeddings checks the new reports in the background (vectors are slow on a CPU)."""
     if not ids or not classifier.uses_embeddings():
@@ -107,8 +138,10 @@ async def ingest_once() -> dict | None:
         report = await run_live_ingest()
         invalidate_cache()
         new_ids = report.pop("new_ids", [])
+        serbian = set(serbian_ids(new_ids))
+        report["serbian_local_ai"] = start_serbian_local_ai(list(serbian))
         report["model_check"] = start_model_check(new_ids)
-        report["llm_enrichment"] = start_enrichment(new_ids)
+        report["llm_enrichment"] = start_enrichment([i for i in new_ids if i not in serbian])
         alerts, _ = _alerts("all", config.NOTIFY_LANG)
         report["notified"] = await notify.notify_new(alerts)
         STATE["last_ingest"] = report

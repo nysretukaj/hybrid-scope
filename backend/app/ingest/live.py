@@ -16,7 +16,9 @@ from .. import config, db
 from ..analyzer import analyze
 from ..ml.images import clean_url, image_from_entry
 from ..normalize import build_signal, iso, make_id, utcnow
+from .policy import apply_fact_check_hint, apply_policies  # noqa: F401 - apply_fact_check_hint re-exported
 from .scrape import fetch_scraped
+from .telegram import fetch_telegram
 
 log = logging.getLogger(__name__)
 _TAGS = re.compile(r"<[^>]+>")
@@ -155,24 +157,6 @@ async def fetch_ransomware(client: httpx.AsyncClient) -> list[dict]:
     return ransomware_items(data if isinstance(data, list) else [], utcnow(), config.RANSOMWARE_DAYS)
 
 
-def apply_fact_check_hint(item: dict, a: dict) -> bool:
-    """A fact-checker's article with at least a weak disinformation indicator is about a false claim:
-    classify it as (low-severity) disinformation. Explainers without any indicator stay as they are."""
-    from ..assess import classify_extra
-    from ..i18n import tr
-
-    if not str(item.get("source_type", "")).startswith("fact-check") or a["category"] != "other":
-        return False
-    if (a.get("keyword_scores") or {}).get("disinformation", 0) < 1:
-        return False
-    a.update(classify_extra("disinformation", item["title"], item["text"]))
-    a.update(category="disinformation", severity=max(a["severity"], 0.3), confidence=max(a["confidence"], 0.5))
-    a["rationale"] = tr("nlp.factcheck", "en")
-    for lang in ("sq", "de"):
-        a.setdefault("i18n", {}).setdefault(lang, {})["rationale"] = tr("nlp.factcheck", lang)
-    return True
-
-
 def reanalyze_rule_only() -> int:
     """Run improved keyword rules again over stored reports that only the rules have seen.
     LLM and analyst labels are never touched. Returns how many reports changed category."""
@@ -180,8 +164,7 @@ def reanalyze_rule_only() -> int:
     for s in db.fetch_signals():
         if s["analyzer"] != "local-nlp":
             continue
-        a = analyze(s["title"], s["text"], use_llm=False)
-        apply_fact_check_hint(s, a)
+        a = apply_policies(s, analyze(s["title"], s["text"], use_llm=False))
         if a["category"] != s["category"] and db.update_analysis(s["id"], a, only_if_analyzer="local-nlp"):
             changed += 1
     return changed
@@ -194,12 +177,12 @@ def _analyze_all(raw: list[dict]) -> list[dict]:
     from ..ml import classifier
 
     analyses = [analyze(r["title"], r["text"], use_llm=False) for r in raw]
-    for r, a in zip(raw, analyses):
-        apply_fact_check_hint(r, a)
     try:
         classifier.refine([(r["title"], r["text"]) for r in raw], analyses, allow_embeddings=False)
     except Exception:  # noqa: BLE001 - the rules' result is always kept if the model fails
         log.exception("trained model could not check the new reports")
+    for r, a in zip(raw, analyses):
+        apply_policies(r, a)  # who published it matters: fact-checkers, foreign state media
     return [build_signal(
         source_name=r["source_name"], source_type=r["source_type"], reliability=r["reliability"],
         title=r["title"], text=r["text"], url=r["url"], timestamp=r["timestamp"], analysis=a,
@@ -210,11 +193,12 @@ def _analyze_all(raw: list[dict]) -> list[dict]:
 async def run_live_ingest() -> dict:
     started = utcnow()
     names = ([f["name"] for f in config.RSS_FEEDS] + ["GDELT", "CISA KEV", "ransomware.live"]
-             + [s["name"] for s in config.SCRAPE_SOURCES])
+             + [s["name"] for s in config.SCRAPE_SOURCES] + [t["name"] for t in config.TELEGRAM_CHANNELS])
     async with httpx.AsyncClient(timeout=config.HTTP_TIMEOUT, headers={"User-Agent": config.USER_AGENT}) as client:
         tasks = ([fetch_rss(client, f) for f in config.RSS_FEEDS]
                  + [fetch_gdelt(client), fetch_cisa_kev(client), fetch_ransomware(client)]
-                 + [fetch_scraped(client, s) for s in config.SCRAPE_SOURCES])
+                 + [fetch_scraped(client, s) for s in config.SCRAPE_SOURCES]
+                 + [fetch_telegram(client, t) for t in config.TELEGRAM_CHANNELS])
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
     raw, report = [], []

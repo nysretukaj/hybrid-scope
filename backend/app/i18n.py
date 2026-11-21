@@ -90,6 +90,11 @@ T: dict[str, dict[str, str]] = {
         "sq": "Publikuar nga një verifikues faktesh dhe teksti tregon një pretendim të rremë ose mashtrues: klasifikuar si dezinformim (rëndësi e ulët).",
         "de": "Von einem Faktencheck veröffentlicht, und der Text weist auf eine falsche oder irreführende Behauptung hin: als Desinformation eingestuft (geringe Schwere).",
     },
+    "nlp.propaganda": {
+        "en": "Published by foreign state-controlled media: recorded as a propaganda narrative to watch, not as a confirmed event.",
+        "sq": "Publikuar nga media shtetërore e huaj: regjistrohet si narrativë propagandistike për t'u ndjekur, jo si ngjarje e konfirmuar.",
+        "de": "Von ausländischen Staatsmedien veröffentlicht: als Propaganda-Narrativ zur Beobachtung erfasst, nicht als bestätigtes Ereignis.",
+    },
     "nlp.model": {"en": " Trained model: {cat} ({p}% sure).", "sq": " Modeli i trajnuar: {cat} ({p}% i sigurt).",
                   "de": " Trainiertes Modell: {cat} ({p}% sicher)."},
     "nlp.noloc": {"en": " No known location resolved.", "sq": " Nuk u gjet asnjë vendndodhje e njohur.",
@@ -327,6 +332,10 @@ SOURCE_TYPES: dict[str, dict[str, str]] = {
     "advisory": {"sq": "njoftim sigurie", "de": "Sicherheitswarnung"}, "leak": {"sq": "rrjedhje", "de": "Leak"},
     "maritime": {"sq": "detar", "de": "maritim"}, "official": {"sq": "zyrtar", "de": "amtlich"},
     "fact-check": {"sq": "verifikim faktesh", "de": "Faktencheck"}, "disaster": {"sq": "fatkeqësi natyrore", "de": "Katastrophe"},
+    "investigative": {"sq": "gazetari hetuese", "de": "investigativ"}, "ngo": {"sq": "organizatë joqeveritare", "de": "NGO"},
+    "state-aligned": {"sq": "media pro-qeveritare", "de": "regierungsnah"},
+    "state-media": {"sq": "media shtetërore (propagandë)", "de": "Staatsmedien (Propaganda)"},
+    "telegram": {"sq": "Telegram", "de": "Telegram"},
 }
 
 
