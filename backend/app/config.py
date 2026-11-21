@@ -232,6 +232,7 @@ CLASSIFIER_MIN_PROB = float(os.getenv("CLASSIFIER_MIN_PROB", "0.7"))  # never de
 # The trained model decides on its own only above the certainty at which its decisions were right at
 # least this often in cross-validation (the threshold is measured at every training).
 CLASSIFIER_TARGET_PRECISION = float(os.getenv("CLASSIFIER_TARGET_PRECISION", "0.9"))
+IMAGE_MODEL_ENABLED = os.getenv("IMAGE_MODEL_ENABLED", "1") == "1"  # CLIP vectors of pictures for training
 IMAGE_MAX_BYTES = 5 * 1024 * 1024
 IMAGE_MAX_SIDE = 1024
 

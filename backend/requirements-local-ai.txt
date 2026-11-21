@@ -1,0 +1,5 @@
+# Optional, for training on text + pictures on your own computer (not needed for the public demo):
+#   .venv\Scripts\python -m pip install -r requirements-local-ai.txt
+# The CLIP image model (~350 MB) is downloaded on first use into backend/data/models/fastembed.
+-r requirements.txt
+fastembed>=0.4

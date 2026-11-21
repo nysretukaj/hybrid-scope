@@ -19,13 +19,14 @@ import numpy as np
 
 from .. import config
 from ..normalize import iso, utcnow
-from . import dataset, embeddings, ollama
+from . import dataset, embeddings, image_embeddings, ollama
 
 log = logging.getLogger(__name__)
 
 HEADS = ("category", "cause", "claim")
 MIN_RECORDS = 30
 MIN_CLASS_SIZE = 3
+MIN_IMAGES = 10  # labelled reports with a usable picture needed before pictures are tried
 VERSION = 1
 _CACHE: dict = {"mtime": None, "bundle": None}
 
@@ -43,7 +44,7 @@ def _estimator(kind: str):
     from sklearn.linear_model import LogisticRegression
     from sklearn.pipeline import FeatureUnion, Pipeline
 
-    if kind == "embeddings":
+    if kind.startswith("embeddings"):  # "embeddings" (text) or "embeddings+image" (text and picture)
         return LogisticRegression(max_iter=4000, class_weight="balanced", C=4.0)
     features = FeatureUnion([
         ("words", TfidfVectorizer(ngram_range=(1, 2), sublinear_tf=True, min_df=1, max_features=40000)),
@@ -68,6 +69,37 @@ def _metrics(y_true: list, y_pred: list) -> dict:
 
 def _rows(X, idx):
     return X[idx] if isinstance(X, np.ndarray) else [X[i] for i in idx]
+
+
+def fuse(text_vecs: np.ndarray, image_vecs: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """Early fusion: [text vector | picture vector (zeros without one) | has-picture flag]."""
+    return np.hstack([text_vecs, image_vecs, mask[:, None].astype(np.float32)]).astype(np.float32)
+
+
+def _compare_modalities(X_text: np.ndarray, X_fused: np.ndarray, y: list[str], weights: np.ndarray,
+                        mask: np.ndarray) -> dict:
+    """Text only vs text + picture, on the same cross-validation folds. The pictures are used only if
+    they make the category model better (macro-F1), so adding images can never make it worse."""
+    from sklearn.model_selection import StratifiedKFold, cross_val_predict
+
+    counts = Counter(y)
+    rows = [i for i, c in enumerate(y) if counts[c] >= MIN_CLASS_SIZE]
+    ys = [y[i] for i in rows]
+    k = max(2, min(5, min(Counter(ys).values())))
+    cv = StratifiedKFold(n_splits=k, shuffle=True, random_state=7)
+    out = {"images_used": int(mask.sum()), "folds": k}
+    for name, X in (("text", X_text), ("text+image", X_fused)):
+        pred = cross_val_predict(_estimator("embeddings"), X[rows], ys, cv=cv, params={"sample_weight": weights[rows]})
+        m = {k2: v for k2, v in _metrics(ys, list(pred)).items() if k2 != "per_class"}
+        with_pic = [j for j, i in enumerate(rows) if mask[i]]
+        m["accuracy_on_reports_with_picture"] = (
+            round(float(np.mean([pred[j] == ys[j] for j in with_pic])), 3) if with_pic else None)
+        out[name] = m
+    t, f = out["text"], out["text+image"]
+    better = f["macro_f1"] > t["macro_f1"] or (
+        f["macro_f1"] == t["macro_f1"] and (f["accuracy_on_reports_with_picture"] or 0) > (t["accuracy_on_reports_with_picture"] or 0))
+    out["chosen"] = "text+image" if better else "text"
+    return out
 
 
 def _operating_point(kind: str, X, rows: list[int], y: list[str], weights: np.ndarray) -> dict:
@@ -137,6 +169,22 @@ def train(progress: Callable[[str, int, int], None] | None = None) -> dict:
         if vecs is not None:
             kind, X = "embeddings", vecs
     weights = np.asarray([r["weight"] for r in records], dtype=float)
+
+    # Pictures: CLIP vectors next to the text vectors, kept only if they make the model better
+    modalities = None
+    if kind == "embeddings" and image_embeddings.available():
+        report("images", 0, 0)
+        img, mask = image_embeddings.vectors_for_urls([r.get("image_url") for r in records],
+                                                      lambda d, t: report("images", d, t))
+        if int(mask.sum()) >= MIN_IMAGES:
+            fused = fuse(X, img, mask)
+            modalities = _compare_modalities(X, fused, [r["category"] for r in records], weights, mask)
+            if modalities["chosen"] == "text+image":
+                kind, X = "embeddings+image", fused
+        else:
+            modalities = {"images_used": int(mask.sum()), "chosen": "text",
+                          "reason": f"fewer than {MIN_IMAGES} labelled reports with a usable picture"}
+
     train_idx = [i for i, r in enumerate(records) if r["split"] == "train"]
     val_idx = [i for i, r in enumerate(records) if r["split"] == "val"]
     if len(val_idx) < 8 or len(train_idx) < MIN_RECORDS - 8:
@@ -187,7 +235,7 @@ def train(progress: Callable[[str, int, int], None] | None = None) -> dict:
         "records": len(records), "train": len(train_idx), "validation": len(val_idx),
         "by_quality": dict(Counter(r["quality"] for r in records)),
         "by_category": dict(Counter(r["category"] for r in records)),
-        "heads": list(heads), "metrics": metrics,
+        "heads": list(heads), "metrics": metrics, "modalities": modalities,
     }
     joblib.dump({"meta": meta, "heads": heads}, model_path)
     meta_path.write_text(json.dumps(meta, indent=1, ensure_ascii=False), encoding="utf-8")
@@ -221,18 +269,32 @@ def _load():
     return _CACHE["bundle"]
 
 
-def predict(texts: list[str], allow_embeddings: bool = True) -> list[dict] | None:
+def predict(texts: list[str], allow_embeddings: bool = True, image_urls: list[str | None] | None = None,
+            image_vectors: list | None = None) -> list[dict] | None:
     """Per text: {head: {"label", "prob"}}. None when no model is trained or its features are unavailable.
-    allow_embeddings=False skips an embeddings model (computing vectors on a CPU takes time)."""
+    allow_embeddings=False skips an embeddings model (computing vectors on a CPU takes time).
+    For a text+image model the pictures come as URLs (fetched and cached) or ready CLIP vectors;
+    a report without a picture is handled like the pictureless reports in training."""
     bundle = _load()
     if not bundle or not texts:
         return None
-    if bundle["meta"]["features"] == "embeddings":
+    features = bundle["meta"]["features"]
+    if features.startswith("embeddings"):
         if not allow_embeddings:
             return None
         X = embeddings.vectors(texts)
         if X is None:
             return None
+        if features == "embeddings+image":
+            img = np.zeros((len(texts), image_embeddings.DIM), dtype=np.float32)
+            mask = np.zeros(len(texts), dtype=bool)
+            if image_vectors is not None:
+                for i, v in enumerate(image_vectors):
+                    if v is not None:
+                        img[i], mask[i] = v, True
+            elif image_urls is not None:
+                img, mask = image_embeddings.vectors_for_urls(image_urls)
+            X = fuse(X, img, mask)
     else:
         X = texts
     out = [{} for _ in texts]
@@ -245,18 +307,24 @@ def predict(texts: list[str], allow_embeddings: bool = True) -> list[dict] | Non
     return out
 
 
+def uses_images() -> bool:
+    bundle = _load()
+    return bool(bundle) and bundle["meta"]["features"] == "embeddings+image"
+
+
 def uses_embeddings() -> bool:
     bundle = _load()
-    return bool(bundle) and bundle["meta"]["features"] == "embeddings"
+    return bool(bundle) and bundle["meta"]["features"].startswith("embeddings")
 
 
-def refine(items: list[tuple[str, str]], analyses: list[dict], allow_embeddings: bool = True) -> int:
+def refine(items: list[tuple[str, str]], analyses: list[dict], allow_embeddings: bool = True,
+           image_urls: list[str | None] | None = None) -> int:
     """Let the trained model correct the keyword rules where it is confident. Returns how many changed."""
     from ..assess import classify_extra
     from ..i18n import cat_label, tr
 
     started = time.monotonic()
-    preds = predict([dataset.model_text(t, x) for t, x in items], allow_embeddings)
+    preds = predict([dataset.model_text(t, x) for t, x in items], allow_embeddings, image_urls=image_urls)
     if not preds:
         return 0
     threshold = decision_threshold()  # None: the model never reached the target precision, so it never decides
@@ -297,7 +365,7 @@ def refine_stored(ids: list[str]) -> int:
         return 0
     analyses = [{k: s.get(k) for k in ("category", "tags", "severity", "confidence", "analyzer", "rationale",
                                        "entities", "i18n", "subcategory", "cause", "claim", "target")} for s in sigs]
-    refine([(s["title"], s["text"]) for s in sigs], analyses)
+    refine([(s["title"], s["text"]) for s in sigs], analyses, image_urls=[s.get("image_url") for s in sigs])
     changed = 0
     for s, a in zip(sigs, analyses):
         if a["analyzer"] == "local-ml" and db.update_analysis(s["id"], a, only_if_analyzer="local-nlp"):

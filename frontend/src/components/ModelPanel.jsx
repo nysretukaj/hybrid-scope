@@ -31,6 +31,36 @@ function Btn({ children, onClick, disabled, primary }) {
   )
 }
 
+/** Text only vs text + picture, measured on the same folds; pictures are kept only if they help. */
+function Modalities({ mod }) {
+  const { t } = useI18n()
+  if (!mod) return null
+  const rows = mod.text && mod['text+image'] ? [['text', t('ml.mod.text')], ['text+image', t('ml.mod.fused')]] : []
+  return (
+    <div className="mt-3 rounded-lg bg-slate-950/60 p-3 text-xs ring-1 ring-slate-800">
+      <div className="mb-2 font-semibold text-slate-200">🖼️ {t('ml.mod.title', { n: mod.images_used })}</div>
+      {rows.length > 0 ? (
+        <table className="w-full text-left">
+          <thead className="text-[10px] uppercase tracking-wider text-slate-500">
+            <tr><th className="py-1">{t('ml.mod.input')}</th><th>{t('ml.mod.acc')}</th><th>F1</th><th>{t('ml.mod.withPic')}</th></tr>
+          </thead>
+          <tbody>
+            {rows.map(([k, label]) => (
+              <tr key={k} className={`border-t border-slate-800 ${mod.chosen === k ? 'text-emerald-200' : 'text-slate-300'}`}>
+                <td className="py-1">{mod.chosen === k ? '✓ ' : ''}{label}</td>
+                <td className="font-mono">{pct(mod[k].accuracy)}</td>
+                <td className="font-mono">{mod[k].macro_f1.toFixed(2)}</td>
+                <td className="font-mono">{mod[k].accuracy_on_reports_with_picture != null ? pct(mod[k].accuracy_on_reports_with_picture) : '–'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : <p className="text-slate-400">{t('ml.mod.few')}</p>}
+      <p className="mt-2 text-[10px] text-slate-500">{mod.chosen === 'text+image' ? t('ml.mod.usedYes') : t('ml.mod.usedNo')}</p>
+    </div>
+  )
+}
+
 /** Accuracy and macro-F1 of the trained model next to the keyword rules, on reports it never saw. */
 function Metrics({ info }) {
   const { t } = useI18n()
@@ -158,6 +188,7 @@ export default function ModelPanel({ publicMode, notify }) {
       {!job.running && job.result?.labelled != null && (
         <div className="rounded-xl bg-slate-900/60 p-3 text-sm text-slate-300 ring-1 ring-slate-800">
           ✓ {t('ml.labelDone', { n: job.result.labelled, f: job.result.failed, s: job.result.seconds })}
+          {job.result.pictures > 0 && <> {t('ml.labelPics', { n: job.result.pictures })}</>}
         </div>
       )}
 
@@ -216,6 +247,12 @@ export default function ModelPanel({ publicMode, notify }) {
                 disabled={!o.base_model_ready || running || !!busy}>
                 🏷️ {t('ml.label20')}
               </Btn>
+              {s.image_model?.available && (
+                <Btn onClick={() => act('labelImg', () => api.mlLabel(20, true), (r) => (r.started ? t('ml.labelStarted', { n: r.queued }) : t('ml.nothingToLabel')))}
+                  disabled={!o.base_model_ready || running || !!busy}>
+                  🖼️ {t('ml.label20img')}
+                </Btn>
+              )}
               <Btn onClick={async () => setExported(await act('export', api.mlExport))} disabled={!!busy}>
                 {busy === 'export' ? t('ml.working') : `📦 ${t('ml.export')}`}
               </Btn>
@@ -240,6 +277,7 @@ export default function ModelPanel({ publicMode, notify }) {
                 {t('ml.trainedAt', { t: fmtTime(info.trained_at) })} · {t(`ml.feat.${info.features}`)} · {t('ml.trainedOn', { n: info.records })}
               </div>
               <Metrics info={{ ...info, min_prob: s.classifier_min_prob }} />
+              <Modalities mod={info.modalities} />
             </>
           ) : <p className="text-sm text-slate-400">{t('ml.notTrained')}</p>}
           {canWrite && (

@@ -98,7 +98,8 @@ def ensemble(title: str, text: str, local: dict, model_pred: dict | None, llm_re
 
 
 def analyze(title: str, text: str, use_llm: bool = True, purpose: str = "analyze",
-            use_local_llm: bool = False, use_model: bool = False, image_b64: str | None = None) -> dict:
+            use_local_llm: bool = False, use_model: bool = False, image_b64: str | None = None,
+            image_vector=None) -> dict:
     """Rules always; then, when asked and available: the trained model, the local LLM (Ollama, can read the
     image) and the cloud LLM. With a single analyzer its result is returned unchanged."""
     local = analyze_local(title, text)
@@ -106,7 +107,7 @@ def analyze(title: str, text: str, use_llm: bool = True, purpose: str = "analyze
     if use_model:
         from ..ml import classifier, dataset  # imported lazily: the ML stack is optional
 
-        preds = classifier.predict([dataset.model_text(title, text)])
+        preds = classifier.predict([dataset.model_text(title, text)], image_vectors=[image_vector])
         model_pred = preds[0] if preds else None
     if use_local_llm:
         from ..ml import local_llm

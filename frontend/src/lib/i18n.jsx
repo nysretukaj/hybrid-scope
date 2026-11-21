@@ -613,6 +613,38 @@ const AUTO = {
 }
 for (const l of Object.keys(AUTO)) Object.assign(D[l], AUTO[l])
 
+// Pictures in training (CLIP vectors next to the text vectors).
+const IMAGES = {
+  en: {
+    'ml.label20img': 'Label 20 reports with pictures', 'ml.labelPics': 'It also described {n} pictures.',
+    'ml.stage.images': 'turning pictures into vectors (CLIP)', 'ml.feat.embeddings+image': 'bge-m3 text + CLIP picture vectors',
+    'ml.mod.title': 'Text or text + picture? ({n} labelled reports have a picture)', 'ml.mod.input': 'Input',
+    'ml.mod.text': 'Text only', 'ml.mod.fused': 'Text + picture', 'ml.mod.acc': 'Correct', 'ml.mod.withPic': 'Correct (with picture)',
+    'ml.mod.few': 'Too few labelled reports with a picture to compare yet. Label more reports with pictures.',
+    'ml.mod.usedYes': 'Pictures made the model better on the same tests, so the model now uses text and pictures.',
+    'ml.mod.usedNo': 'Pictures did not make the model better on the same tests, so it keeps using text only. It is checked again at every training.',
+  },
+  sq: {
+    'ml.label20img': 'Etiketo 20 raportime me imazhe', 'ml.labelPics': 'Përshkroi edhe {n} imazhe.',
+    'ml.stage.images': 'imazhet po kthehen në vektorë (CLIP)', 'ml.feat.embeddings+image': 'tekst bge-m3 + vektorë imazhi CLIP',
+    'ml.mod.title': 'Tekst apo tekst + imazh? ({n} raportime të etiketuara kanë imazh)', 'ml.mod.input': 'Hyrja',
+    'ml.mod.text': 'Vetëm tekst', 'ml.mod.fused': 'Tekst + imazh', 'ml.mod.acc': 'Të sakta', 'ml.mod.withPic': 'Të sakta (me imazh)',
+    'ml.mod.few': 'Ende ka shumë pak raportime të etiketuara me imazh për krahasim. Etiketo më shumë raportime me imazhe.',
+    'ml.mod.usedYes': 'Imazhet e bënë modelin më të mirë në të njëjtat teste, prandaj tani modeli përdor tekstin dhe imazhet.',
+    'ml.mod.usedNo': 'Imazhet nuk e bënë modelin më të mirë në të njëjtat teste, prandaj vazhdon me tekst. Kontrollohet sërish në çdo trajnim.',
+  },
+  de: {
+    'ml.label20img': '20 Meldungen mit Bildern labeln', 'ml.labelPics': 'Dazu wurden {n} Bilder beschrieben.',
+    'ml.stage.images': 'Bilder werden zu Vektoren (CLIP)', 'ml.feat.embeddings+image': 'bge-m3-Text + CLIP-Bildvektoren',
+    'ml.mod.title': 'Text oder Text + Bild? ({n} gelabelte Meldungen haben ein Bild)', 'ml.mod.input': 'Eingabe',
+    'ml.mod.text': 'Nur Text', 'ml.mod.fused': 'Text + Bild', 'ml.mod.acc': 'Richtig', 'ml.mod.withPic': 'Richtig (mit Bild)',
+    'ml.mod.few': 'Noch zu wenige gelabelte Meldungen mit Bild für einen Vergleich. Labeln Sie mehr Meldungen mit Bildern.',
+    'ml.mod.usedYes': 'Bilder haben das Modell in denselben Tests verbessert, daher nutzt es jetzt Text und Bilder.',
+    'ml.mod.usedNo': 'Bilder haben das Modell in denselben Tests nicht verbessert, daher bleibt es bei Text. Das wird bei jedem Training neu geprüft.',
+  },
+}
+for (const l of Object.keys(IMAGES)) Object.assign(D[l], IMAGES[l])
+
 const LangContext = createContext({ lang: 'en', setLang: () => {}, t: (k) => k })
 
 function readStored(key, allowed, fallback) {

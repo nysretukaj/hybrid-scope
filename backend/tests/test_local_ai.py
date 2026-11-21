@@ -227,7 +227,7 @@ def test_classifier_refines_rules_only_when_confident(fresh, monkeypatch):
 
     items = [("Concert in Berlin", "A concert in Berlin."), ("Concert in Vienna", "A concert in Vienna.")]
     analyses = [analyze_local(t, x) for t, x in items]
-    monkeypatch.setattr(classifier, "predict", lambda texts, allow_embeddings=True: [
+    monkeypatch.setattr(classifier, "predict", lambda texts, allow_embeddings=True, **kw: [
         {"category": {"label": "cyber", "prob": 0.95}}, {"category": {"label": "cyber", "prob": 0.5}}])
     monkeypatch.setattr(classifier, "decision_threshold", lambda: None)
     assert classifier.refine(items, analyses) == 0  # never reached 90% precision: the model does not decide alone
@@ -247,12 +247,66 @@ def test_background_check_never_overwrites_llm_labels(fresh, monkeypatch):
     llm = build_signal(source_name="x", source_type="news", reliability=0.6, title="Concert in Tirana", text="A concert.",
                        url="https://e.org/2", timestamp=utcnow(), analysis={"category": "other", "analyzer": "llm:test"})
     fresh.insert_signals([rules, llm])
-    monkeypatch.setattr(classifier, "predict", lambda texts, allow_embeddings=True: [{"category": {"label": "cyber", "prob": 0.95}}] * len(texts))
+    monkeypatch.setattr(classifier, "predict", lambda texts, allow_embeddings=True, **kw: [{"category": {"label": "cyber", "prob": 0.95}}] * len(texts))
     monkeypatch.setattr(classifier, "decision_threshold", lambda: 0.9)
     assert classifier.refine_stored([rules["id"], llm["id"]]) == 1
     stored = {s["id"]: s for s in fresh.fetch_by_ids([rules["id"], llm["id"]])}
     assert stored[rules["id"]]["category"] == "cyber" and stored[rules["id"]]["analyzer"] == "local-ml"
     assert stored[llm["id"]]["category"] == "other" and stored[llm["id"]]["analyzer"] == "llm:test"
+
+
+def test_pictures_are_used_only_when_they_help():
+    from app.ml.classifier import _compare_modalities, fuse
+
+    rng = np.random.default_rng(0)
+    n = 120
+    y = ["cyber" if i % 2 else "physical" for i in range(n)]
+    text = rng.normal(size=(n, 16)).astype(np.float32)          # text says nothing here
+    mask = np.ones(n, dtype=bool)
+    informative = np.zeros((n, 8), dtype=np.float32)
+    informative[:, 0] = [1.0 if c == "cyber" else -1.0 for c in y]  # the picture tells the class
+    weights = np.ones(n)
+    good = _compare_modalities(text, fuse(text, informative, mask), y, weights, mask)
+    assert good["chosen"] == "text+image" and good["text+image"]["macro_f1"] > good["text"]["macro_f1"]
+    # pictures that carry no information are not adopted
+    text_good = np.zeros((n, 16), dtype=np.float32)
+    text_good[:, 0] = [1.0 if c == "cyber" else -1.0 for c in y]
+    noise = rng.normal(size=(n, 8)).astype(np.float32)
+    bad = _compare_modalities(text_good, fuse(text_good, noise, mask), y, weights, mask)
+    assert bad["chosen"] == "text"
+
+
+def test_text_image_model_trains_and_predicts(fresh, fake_ollama, monkeypatch):
+    from app.ml import classifier, image_embeddings
+
+    _add_labelled(fresh, 18)
+    # give every report a "picture" whose vector reveals its category, as an informative picture would
+    sigs = {s["url"]: s for s in fresh.fetch_signals()}
+
+    def vectors_for_urls(urls, progress=None, fetch_missing=True):
+        img = np.zeros((len(urls), image_embeddings.DIM), dtype=np.float32)
+        mask = np.zeros(len(urls), dtype=bool)
+        for i, u in enumerate(urls):
+            if u:
+                cat = u.split("/")[-2]
+                img[i, ["cyber", "disinformation", "infrastructure", "other"].index(cat)] = 1.0
+                mask[i] = True
+        return img, mask
+
+    for s in sigs.values():
+        if s["url"] and s["url"].startswith("https://example.org/"):
+            with fresh.get_conn() as conn:
+                conn.execute("UPDATE signals SET image_url = ? WHERE id = ?", (s["url"] + "/pic.jpg", s["id"]))
+    monkeypatch.setattr(image_embeddings, "available", lambda: True)
+    monkeypatch.setattr(image_embeddings, "vectors_for_urls",
+                        lambda urls, progress=None, fetch_missing=True: vectors_for_urls([u.rsplit("/", 1)[0] if u else None for u in urls]))
+    meta = classifier.train()
+    mod = meta["modalities"]
+    assert mod["images_used"] >= 40  # only the example.org reports have a picture and mod["chosen"] in ("text", "text+image")
+    assert meta["features"] == ("embeddings+image" if mod["chosen"] == "text+image" else "embeddings")
+    # a report without a picture still gets a prediction
+    pred = classifier.predict(["Ransomware gang encrypts servers of the bank in Riga"], image_vectors=[None])
+    assert pred[0]["category"]["label"] == "cyber"
 
 
 def test_too_little_data_is_reported(fresh):
