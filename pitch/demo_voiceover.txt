@@ -1,0 +1,12 @@
+﻿HybridScope - demo video with voice-over (43 seconds)
+File: HybridScope_demo_narrated.mp4 (also on slide 5 of HybridScope_pitch_3min.pptx)
+Voice: Kokoro "af_heart" (open-source neural text-to-speech, generated offline), one continuous track.
+
+1. HybridScope: early warning for hybrid attacks.
+2. Our A.I. reads sixty public sources in four languages. Red means: act now.
+3. Let's open the most urgent alert, in Kosovo. This is our test scenario.
+4. It linked fourteen reports from eight sources: fake news, hacking, a blackout, and a protest. Together, they are one attack.
+5. An official source and four independent sources agree. So the status is: confirmed.
+6. Paste any news, and in seconds three A.I. models vote: fake news, a cyber attack, and sabotage.
+7. On news it never saw, it is eighty-five percent accurate, and ninety-one percent precise.
+8. See the whole attack, not just the pieces.
