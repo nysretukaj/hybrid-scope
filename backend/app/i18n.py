@@ -85,6 +85,11 @@ T: dict[str, dict[str, str]] = {
     "nlp.lowered": {"en": " Severity lowered by: {kws} (likely non-hostile).",
                     "sq": " Rëndësia u ul nga: {kws} (ka gjasa të mos jetë armiqësor).",
                     "de": " Schwere gesenkt durch: {kws} (vermutlich nicht feindlich)."},
+    "nlp.factcheck": {
+        "en": "Published by a fact-checker and the text points to a false or misleading claim: classified as disinformation (low severity).",
+        "sq": "Publikuar nga një verifikues faktesh dhe teksti tregon një pretendim të rremë ose mashtrues: klasifikuar si dezinformim (rëndësi e ulët).",
+        "de": "Von einem Faktencheck veröffentlicht, und der Text weist auf eine falsche oder irreführende Behauptung hin: als Desinformation eingestuft (geringe Schwere).",
+    },
     "nlp.model": {"en": " Trained model: {cat} ({p}% sure).", "sq": " Modeli i trajnuar: {cat} ({p}% i sigurt).",
                   "de": " Trainiertes Modell: {cat} ({p}% sicher)."},
     "nlp.noloc": {"en": " No known location resolved.", "sq": " Nuk u gjet asnjë vendndodhje e njohur.",
@@ -321,6 +326,7 @@ SOURCE_TYPES: dict[str, dict[str, str]] = {
     "forum": {"sq": "forum", "de": "Forum"}, "research": {"sq": "kërkim", "de": "Recherche"},
     "advisory": {"sq": "njoftim sigurie", "de": "Sicherheitswarnung"}, "leak": {"sq": "rrjedhje", "de": "Leak"},
     "maritime": {"sq": "detar", "de": "maritim"}, "official": {"sq": "zyrtar", "de": "amtlich"},
+    "fact-check": {"sq": "verifikim faktesh", "de": "Faktencheck"}, "disaster": {"sq": "fatkeqësi natyrore", "de": "Katastrophe"},
 }
 
 

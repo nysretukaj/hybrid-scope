@@ -30,9 +30,23 @@ Tests: `cd backend; .\.venv\Scripts\python -m pytest -q`
 ## How it works
 
 **1. Ingestion & normalization** (`backend/app/ingest/`)
-Live sources: The Record, SANS ISC, BleepingComputer, The Hacker News, Krebs on Security, EUvsDisinfo, Balkan Insight, the GDELT DOC API,
-official and international sources (NCSC UK, UN News Europe), a public incident database (CISA Known Exploited Vulnerabilities)
-and public social media (Mastodon #disinformation, low reliability: an early indicator, never a confirmation).
+Live sources (42, all public; `backend/app/config.py`):
+
+| Kind | Sources |
+|---|---|
+| Kosovo / Albania (Albanian) | Koha, Kallxo, Telegrafi, DW Shqip, Prishtina Insight, KosovaPress, Insajderi, Reporteri, Gazeta Express, Euronews Albania |
+| Fact-checkers & disinformation research | Hibrid.info (Kosovo), Faktoje (Albania), CORRECTIV (de), StopFake, EUvsDisinfo, Bellingcat |
+| Official & international | KOS-CERT and the Government of Kosovo (read from their websites), CERT-EU, NCSC UK, Europol, UN News (Europe, peace & security) |
+| Cyber security | The Record, SANS ISC, BleepingComputer, The Hacker News, Krebs on Security, SecurityWeek, Dark Reading, CyberScoop, heise Security |
+| Incident databases | CISA Known Exploited Vulnerabilities, ransomware.live (gangs' leak-site claims, marked as unconfirmed; no links to leak sites) |
+| Regional & world news | Balkan Insight, tagesschau, DW Deutsch, GDELT DOC API |
+| Natural hazards | GDACS (earthquakes, floods: tells outages from disasters apart from attacks) |
+| Public social media (low reliability, early indicators only) | Mastodon #disinformation, #cybersecurity, #Kosovo |
+
+Sites without a feed are read politely (`ingest/scrape.py`): robots.txt is respected, at most 8 new
+articles per site and run, one request per second, and only the page's own title, summary, picture and
+date are kept. Articles from fact-checkers that point to a false claim are classified as (low-severity)
+disinformation; their explainers are not.
 Every item is normalized to one schema: `source, type, reliability, timestamp (published), ingested_at (collected), title, text, url, zone, country, lat/lon, entities, category, subcategory, tags, severity, confidence, cause, claim, target, analyzer, rationale, content_hash`.
 `content_hash` is a SHA-256 of the text exactly as collected; each report also links to its Wayback Machine archive.
 A source that fails is reported and the rest of the run continues.

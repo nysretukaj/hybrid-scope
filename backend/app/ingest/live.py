@@ -16,6 +16,7 @@ from .. import config, db
 from ..analyzer import analyze
 from ..ml.images import clean_url, image_from_entry
 from ..normalize import build_signal, iso, make_id, utcnow
+from .scrape import fetch_scraped
 
 log = logging.getLogger(__name__)
 _TAGS = re.compile(r"<[^>]+>")
@@ -107,6 +108,85 @@ async def fetch_cisa_kev(client: httpx.AsyncClient) -> list[dict]:
     return items
 
 
+# ISO country codes used by ransomware.live -> country names the gazetteer knows
+ISO_COUNTRY = {
+    "XK": "Kosovo", "RS": "Serbia", "MK": "North Macedonia", "AL": "Albania", "BA": "Bosnia", "ME": "Montenegro",
+    "HR": "Croatia", "EE": "Estonia", "FI": "Finland", "LV": "Latvia", "LT": "Lithuania", "MD": "Moldova",
+    "UA": "Ukraine", "RU": "Russia", "PL": "Poland", "RO": "Romania", "BG": "Bulgaria", "DE": "Germany",
+    "FR": "France", "GB": "United Kingdom", "UK": "United Kingdom", "NL": "Netherlands", "BE": "Belgium",
+    "IT": "Italy", "ES": "Spain", "GR": "Greece", "TR": "Turkey", "AT": "Austria", "CH": "Switzerland",
+    "IL": "Israel", "IR": "Iran", "CN": "China", "TW": "Taiwan", "JP": "Japan", "KR": "South Korea",
+    "KP": "North Korea", "IN": "India", "BR": "Brazil", "US": "United States", "CA": "Canada", "AU": "Australia",
+}
+
+
+def ransomware_items(victims: list[dict], now: datetime, days: int) -> list[dict]:
+    """Leak-site claims as reports. The victim name stays as ransomware.live shows it (partly masked)."""
+    items = []
+    for v in victims:
+        try:
+            ts = datetime.fromisoformat(str(v.get("discovered") or v.get("attackdate")).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        ts = ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+        if (now - ts).days >= days:
+            continue
+        group = _clean(str(v.get("group") or "")) or "unknown"
+        victim = _clean(str(v.get("victim") or "")) or "an organisation"
+        country = ISO_COUNTRY.get(str(v.get("country") or "").upper())
+        sector = _clean(str(v.get("activity") or ""))
+        sector = "" if sector.lower() in ("", "not found", "unknown") else sector
+        where = f" in {country}" if country else ""
+        title = f"{group} ransomware group claims attack on {victim}{where}"
+        text = (f"The {group} ransomware gang claims on its leak site to have attacked {victim}"
+                + (f", a {sector} organisation" if sector else "") + f"{where}. "
+                + _clean(str(v.get("description") or ""))[:400]
+                + " This is the criminals' own claim and has not been confirmed by the victim.")
+        url = v.get("url") if str(v.get("url") or "").startswith("https://www.ransomware.live/") else None
+        items.append({"source_name": "ransomware.live", "source_type": "leak", "reliability": 0.6,
+                      "title": title, "text": text.strip(), "url": url, "timestamp": ts, "image_url": None})
+    return items
+
+
+async def fetch_ransomware(client: httpx.AsyncClient) -> list[dict]:
+    resp = await client.get(config.RANSOMWARE_URL)
+    resp.raise_for_status()
+    data = resp.json()
+    return ransomware_items(data if isinstance(data, list) else [], utcnow(), config.RANSOMWARE_DAYS)
+
+
+def apply_fact_check_hint(item: dict, a: dict) -> bool:
+    """A fact-checker's article with at least a weak disinformation indicator is about a false claim:
+    classify it as (low-severity) disinformation. Explainers without any indicator stay as they are."""
+    from ..assess import classify_extra
+    from ..i18n import tr
+
+    if not str(item.get("source_type", "")).startswith("fact-check") or a["category"] != "other":
+        return False
+    if (a.get("keyword_scores") or {}).get("disinformation", 0) < 1:
+        return False
+    a.update(classify_extra("disinformation", item["title"], item["text"]))
+    a.update(category="disinformation", severity=max(a["severity"], 0.3), confidence=max(a["confidence"], 0.5))
+    a["rationale"] = tr("nlp.factcheck", "en")
+    for lang in ("sq", "de"):
+        a.setdefault("i18n", {}).setdefault(lang, {})["rationale"] = tr("nlp.factcheck", lang)
+    return True
+
+
+def reanalyze_rule_only() -> int:
+    """Run improved keyword rules again over stored reports that only the rules have seen.
+    LLM and analyst labels are never touched. Returns how many reports changed category."""
+    changed = 0
+    for s in db.fetch_signals():
+        if s["analyzer"] != "local-nlp":
+            continue
+        a = analyze(s["title"], s["text"], use_llm=False)
+        apply_fact_check_hint(s, a)
+        if a["category"] != s["category"] and db.update_analysis(s["id"], a, only_if_analyzer="local-nlp"):
+            changed += 1
+    return changed
+
+
 def _analyze_all(raw: list[dict]) -> list[dict]:
     """Fast local analysis only: keyword rules, corrected in one batch by the model trained on our data
     when that model is fast (word features). A model on embeddings runs after storing, in the background
@@ -114,6 +194,8 @@ def _analyze_all(raw: list[dict]) -> list[dict]:
     from ..ml import classifier
 
     analyses = [analyze(r["title"], r["text"], use_llm=False) for r in raw]
+    for r, a in zip(raw, analyses):
+        apply_fact_check_hint(r, a)
     try:
         classifier.refine([(r["title"], r["text"]) for r in raw], analyses, allow_embeddings=False)
     except Exception:  # noqa: BLE001 - the rules' result is always kept if the model fails
@@ -127,9 +209,12 @@ def _analyze_all(raw: list[dict]) -> list[dict]:
 
 async def run_live_ingest() -> dict:
     started = utcnow()
-    names = [f["name"] for f in config.RSS_FEEDS] + ["GDELT", "CISA KEV"]
+    names = ([f["name"] for f in config.RSS_FEEDS] + ["GDELT", "CISA KEV", "ransomware.live"]
+             + [s["name"] for s in config.SCRAPE_SOURCES])
     async with httpx.AsyncClient(timeout=config.HTTP_TIMEOUT, headers={"User-Agent": config.USER_AGENT}) as client:
-        tasks = [fetch_rss(client, f) for f in config.RSS_FEEDS] + [fetch_gdelt(client), fetch_cisa_kev(client)]
+        tasks = ([fetch_rss(client, f) for f in config.RSS_FEEDS]
+                 + [fetch_gdelt(client), fetch_cisa_kev(client), fetch_ransomware(client)]
+                 + [fetch_scraped(client, s) for s in config.SCRAPE_SOURCES])
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
     raw, report = [], []
