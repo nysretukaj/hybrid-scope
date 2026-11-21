@@ -28,7 +28,7 @@ from .ingest.seed import reset_seed
 from .normalize import iso, parse_iso, utcnow
 from .i18n import norm_lang, source_label, zone_name
 from .localize import localize_alert, localize_signal
-from .ml import classifier, dataset, jobs, local_llm, ollama
+from .ml import classifier, dataset, image_embeddings, jobs, local_llm, ollama
 from .ml.images import ImageError, decode_upload, fetch as fetch_image, prepare as prepare_image
 from .snapshot import cache_key, export_snapshot, load_samples, load_snapshot, snapshot_info
 
@@ -632,12 +632,15 @@ class AnalyzeRequest(BaseModel):
 
 @app.post("/api/analyze", dependencies=[Depends(limit_analyze)])
 def analyze_text(req: AnalyzeRequest):
-    image_b64 = preview = None
+    image_b64 = preview = image_vector = None
     if req.image_base64:
         try:
-            image_b64, preview = prepare_image(decode_upload(req.image_base64))
+            raw = decode_upload(req.image_base64)
+            image_b64, preview = prepare_image(raw)
         except ImageError as exc:
             raise HTTPException(400, f"Image: {exc}") from exc
+        if classifier.uses_images():  # the trained model also looks at the picture (CLIP vector)
+            image_vector = image_embeddings.embed_bytes(raw)
     local_ready = bool(req.use_local and ollama.chat_model())
     key = cache_key(req.title, req.text)
     cached = None if (image_b64 or local_ready) else db.cache_get(key)
@@ -645,7 +648,7 @@ def analyze_text(req: AnalyzeRequest):
         return {**_localized_analysis(cached, req.lang), "cached": True}
     use_cloud = req.use_llm and not config.DEMO_OFFLINE
     result = analyze(req.title, req.text, use_llm=use_cloud, use_local_llm=local_ready, use_model=True,
-                     image_b64=image_b64 if local_ready else None)
+                     image_b64=image_b64 if local_ready else None, image_vector=image_vector)
     if result["analyzer"].startswith("llm:") and not image_b64:
         db.cache_put(key, req.title, req.text, result, iso(utcnow()))  # replayable in the offline demo
     out = _localized_analysis(result, req.lang)
@@ -665,6 +668,7 @@ def ml_status():
         "classifier": classifier.info(),
         "dataset": _cached(("ml-dataset",), dataset.stats),
         "embeddings": db.count_embeddings(),
+        "image_model": {"available": image_embeddings.available(), "name": image_embeddings.MODEL_NAME},
         "job": jobs.status(),
         "local_llm_for_live": config.LOCAL_LLM_FOR_LIVE,
         "classifier_min_prob": config.CLASSIFIER_MIN_PROB,
@@ -681,14 +685,16 @@ def ml_train():
 
 
 @app.post("/api/ml/label", dependencies=[Depends(require_admin)])
-def ml_label(limit: int = 20):
-    """Let the local LLM label reports that only the keyword rules have seen (new training data)."""
+def ml_label(limit: int = 20, images: bool = False):
+    """Let the local LLM label reports that only the keyword rules have seen (new training data).
+    images=true: reports with a picture, read as text + picture together (for text+image training)."""
     if not ollama.chat_model():
         raise HTTPException(400, f"The local LLM is not available: start Ollama and run `ollama pull {config.OLLAMA_MODEL}`")
-    ids = db.fetch_unenriched_live(max(1, min(limit, 200)))
+    limit = max(1, min(limit, 200))
+    ids = db.fetch_unenriched_with_images(limit) if images else db.fetch_unenriched_live(limit)
     if not ids:
         return {"started": False, "queued": 0}
-    if not jobs.start_label(ids):
+    if not jobs.start_label(ids, with_images=images):
         raise HTTPException(409, "Another local-AI job is running")
     return {"started": True, "queued": len(ids)}
 

@@ -23,6 +23,17 @@ curated exercise scenario. Reports seen only by the keyword rules are not used. 
 - correct categories by hand on the alert page (gold),
 - set the verification status of alerts (gold examples for the hybrid verifier),
 - **AI model → Label with local AI** lets the local LLM label reports the rules alone have seen (silver).
+  **Label with pictures** also shows it each report's picture (gemma3 reads images), so it labels from both.
+
+## Text + pictures
+
+With the optional package `fastembed` (`pip install -r backend/requirements-local-ai.txt`; the CLIP
+ViT-B/32 model, about 350 MB, is downloaded once into `backend/data/models/fastembed`), every training
+also turns the reports' pictures into 512-number CLIP vectors and appends them to the 1024-number bge-m3
+text vectors, plus a flag saying "no picture" for reports without one. Text only and text + picture are
+tested on the same cross-validation folds. Pictures are kept **only if they make the model better**
+(macro-F1), so adding images can never make it worse. The **AI model** page shows both results. Without
+fastembed, or with `IMAGE_MODEL_ENABLED=0`, training uses text only.
 
 ## Level 3: LoRA fine-tuning on Google Colab
 

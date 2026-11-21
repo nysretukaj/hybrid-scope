@@ -190,6 +190,17 @@ def fetch_unenriched_live(limit: int) -> list[str]:
     return [r[0] for r in rows]
 
 
+def fetch_unenriched_with_images(limit: int) -> list[str]:
+    """Live reports with a picture that only the rules have seen: the best candidates to label for
+    text+image training."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id FROM signals WHERE synthetic = 0 AND analyzer IN ('local-nlp', 'local-ml') "
+            "AND image_url IS NOT NULL ORDER BY timestamp DESC LIMIT ?", (limit,),
+        ).fetchall()
+    return [r[0] for r in rows]
+
+
 def update_analysis(signal_id: str, analysis: dict, only_if_analyzer: str | None = None) -> bool:
     """Store a re-analysis. Signals an analyst has corrected by hand are never overwritten; with
     only_if_analyzer the update happens only while the stored analyzer is still that one."""

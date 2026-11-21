@@ -58,17 +58,38 @@ def start_train() -> bool:
     return _start("train", lambda: classifier.train(progress))
 
 
-def start_label(ids: list[str]) -> bool:
-    """Label the given reports with the local LLM (they become silver training data)."""
+def _picture(sig: dict) -> tuple[str | None, str | None]:
+    """(base64 for the model, small preview) of a report's picture, or (None, None)."""
+    from .images import fetch, prepare
+
+    if not sig.get("image_url"):
+        return None, None
+    try:
+        return prepare(fetch(sig["image_url"]))
+    except Exception as exc:  # noqa: BLE001 - a missing picture never stops labelling
+        log.info("picture of %s not usable: %s", sig["id"], exc)
+        return None, None
+
+
+def start_label(ids: list[str], with_images: bool = False) -> bool:
+    """Label the given reports with the local LLM (they become silver training data). With images the
+    model reads the text and the picture together, and its description of the picture is kept."""
     from ..analyzer import complete_llm
 
     def run():
         STATE.update(stage="label", total=len(ids))
-        labelled, failed, started = 0, 0, time.monotonic()
+        labelled, failed, pictures, started = 0, 0, 0, time.monotonic()
         for sig in db.fetch_by_ids(ids):
             if not ollama.chat_model():
                 raise RuntimeError("the local LLM is not available")
-            result = local_llm.analyze(sig["title"], sig["text"])
+            b64, preview = _picture(sig) if with_images else (None, None)
+            result = local_llm.analyze(sig["title"], sig["text"], image_b64=b64)
+            if result and b64 and result.get("image_findings"):
+                pictures += 1
+                db.image_analysis_put(sig["image_url"], result["analyzer"].removeprefix("ollama:"), {
+                    "description": result["image_findings"], "visible_text": "", "category": result["category"],
+                    "threat_relevant": result["category"] != "other", "signs_of_manipulation": [],
+                    "confidence": result["confidence"]}, preview, iso(utcnow()))
             if result:
                 result = complete_llm(result, sig["title"], sig["text"], {"zone": sig["zone"]} if sig.get("zone") else None)
                 db.update_analysis(sig["id"], result)
@@ -78,7 +99,7 @@ def start_label(ids: list[str]) -> bool:
             STATE["done"] = labelled + failed
             if labelled + failed in (5, 10) or (labelled + failed) % 20 == 0:
                 _notify_change()  # let the board show progress while the job runs
-        return {"labelled": labelled, "failed": failed, "seconds": round(time.monotonic() - started)}
+        return {"labelled": labelled, "failed": failed, "pictures": pictures, "seconds": round(time.monotonic() - started)}
     return _start("label", run)
 
 

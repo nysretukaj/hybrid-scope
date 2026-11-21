@@ -50,7 +50,7 @@ export const api = {
   // local AI (Ollama + model trained on our data)
   mlStatus: () => fetch('/api/ml/status').then(json),
   mlTrain: () => post('/api/ml/train'),
-  mlLabel: (limit) => post(`/api/ml/label${qs({ limit })}`),
+  mlLabel: (limit, images) => post(`/api/ml/label${qs({ limit, images: images ? "true" : undefined })}`),
   mlExport: () => post('/api/ml/export'),
   mlCreateModel: () => post('/api/ml/create-model'),
   verifyAi: (id, source, lang) => post(`/api/alerts/${id}/verify-ai${qs({ source, lang })}`),
