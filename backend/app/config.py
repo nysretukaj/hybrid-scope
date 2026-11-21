@@ -81,10 +81,52 @@ RSS_FEEDS = [
     {"name": "NCSC UK", "url": "https://www.ncsc.gov.uk/api/1/services/v1/all-rss-feed.xml", "type": "official", "reliability": 0.9},
     {"name": "UN News (Europe)", "url": "https://news.un.org/feed/subscribe/en/news/region/europe/feed/rss.xml",
      "type": "official", "reliability": 0.85},
+    {"name": "Europol", "url": "https://www.europol.europa.eu/cms/api/rss/news", "type": "official", "reliability": 0.9},
+    {"name": "UN News (peace & security)", "url": "https://news.un.org/feed/subscribe/en/news/topic/peace-and-security/feed/rss.xml",
+     "type": "official", "reliability": 0.85},
+    {"name": "CERT-EU", "url": "https://cert.europa.eu/publications/security-advisories-rss", "type": "advisory", "reliability": 0.95},
+    # Kosovo / Albania: news agencies and investigative media (Albanian)
+    {"name": "KosovaPress", "url": "https://kosovapress.com/feed/", "type": "news (sq)", "reliability": 0.75},
+    {"name": "Insajderi", "url": "https://insajderi.org/feed/", "type": "news (sq)", "reliability": 0.7},
+    {"name": "Reporteri", "url": "https://reporteri.net/feed/", "type": "news (sq)", "reliability": 0.65},
+    {"name": "Gazeta Express", "url": "https://www.gazetaexpress.com/feed/", "type": "news (sq)", "reliability": 0.65},
+    {"name": "Euronews Albania", "url": "https://euronews.al/feed/", "type": "news (sq)", "reliability": 0.75},
+    # Fact-checkers and disinformation research: they name the false claims and who spreads them
+    {"name": "Hibrid.info", "url": "https://hibrid.info/feed/", "type": "fact-check (sq)", "reliability": 0.85},
+    {"name": "Faktoje", "url": "https://faktoje.al/feed/", "type": "fact-check (sq)", "reliability": 0.85},
+    {"name": "CORRECTIV", "url": "https://correctiv.org/feed/", "type": "fact-check (de)", "reliability": 0.85},
+    {"name": "StopFake", "url": "https://www.stopfake.org/en/feed/", "type": "fact-check", "reliability": 0.75},
+    {"name": "Bellingcat", "url": "https://www.bellingcat.com/feed/", "type": "research", "reliability": 0.9},
+    # More cyber security news
+    {"name": "SecurityWeek", "url": "https://www.securityweek.com/feed/", "type": "news", "reliability": 0.8},
+    {"name": "Dark Reading", "url": "https://www.darkreading.com/rss.xml", "type": "news", "reliability": 0.75},
+    {"name": "CyberScoop", "url": "https://cyberscoop.com/feed/", "type": "news", "reliability": 0.8},
+    # Natural hazards: tells outages caused by earthquakes or floods apart from attacks
+    {"name": "GDACS", "url": "https://www.gdacs.org/xml/rss.xml", "type": "disaster", "reliability": 0.9},
     # Public social media: low reliability, used as early indicators, never as confirmation
     {"name": "Mastodon #disinformation", "url": "https://mastodon.social/tags/disinformation.rss", "type": "social",
      "reliability": 0.4},
+    {"name": "Mastodon #cybersecurity", "url": "https://mastodon.social/tags/cybersecurity.rss", "type": "social",
+     "reliability": 0.4},
+    {"name": "Mastodon #Kosovo", "url": "https://mastodon.social/tags/kosovo.rss", "type": "social", "reliability": 0.4},
 ]
+
+# Ransomware victims announced by the gangs on their leak sites (via ransomware.live). These are the
+# criminals' own claims: low reliability, "alleged"; we link to ransomware.live, never to the leak sites.
+RANSOMWARE_URL = "https://api.ransomware.live/v2/recentvictims"
+RANSOMWARE_DAYS = 3
+
+# Public websites without a feed, read politely: robots.txt is respected, at most `max` new
+# articles per run, one request per second, and only the page's own title/summary/date are kept.
+SCRAPE_SOURCES = [
+    {"name": "KOS-CERT", "list_url": "https://kos-cert.org/lajme-njoftime",
+     "pattern": r"^/lajme-njoftime/[a-z0-9\-]{8,}/?$", "type": "advisory (sq)", "reliability": 0.9, "max": 8,
+     "strip_title": " | KOS-CERT"},
+    {"name": "Qeveria e Kosovës", "list_url": "https://kryeministri.rks-gov.net/lajme/",
+     "pattern": r"^/(?:lajme|news)/[a-z0-9\-]{10,}/?$", "type": "official (sq)", "reliability": 0.85, "max": 8,
+     "strip_title": " - Kryeministri"},
+]
+SCRAPE_DELAY_S = 1.0
 
 # Public incident database: vulnerabilities CISA has seen exploited in real attacks.
 CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
