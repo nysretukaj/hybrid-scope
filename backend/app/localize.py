@@ -75,6 +75,10 @@ def localize_alert(a: dict, lang: str | None) -> dict:
                         for b in a["breakdown"]]
     out["sequence"] = [{**x, "label": cat_label(x["category"], lang)} for x in a["sequence"]]
     out["shared_entities"] = [{**e, "name": entity_name(e["name"], lang)} for e in a["shared_entities"]]
+    auto = (a.get("assessment") or {}).get("auto_verification")
+    if auto:  # source names in the reasons: the exercise's fictional outlets have translated names
+        reasons = [{**r, "names": [source_label(n, lang) for n in r["names"]]} if r.get("names") else r for r in auto["reasons"]]
+        out["assessment"] = {**a["assessment"], "auto_verification": {**auto, "reasons": reasons}}
     if "links" in a:
         out["links"] = [{**l, "reasons": [link_reason(r, lang) for r in l["reason_params"]]} for l in a["links"]]
     if "signals" in a:

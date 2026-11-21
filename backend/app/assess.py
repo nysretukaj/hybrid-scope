@@ -299,6 +299,62 @@ def independent(signals: list[dict]) -> list[dict]:
     return [s for s in signals if not s.get("duplicate_of")]
 
 
+# --- automatic verification status --------------------------------------------------
+# A reliable source that says the incident did not happen (only used when the alert is not itself
+# about disinformation: there, a fact-checker's "false" confirms that the campaign exists).
+_DENIAL = re.compile(
+    r"\b(?:denied|denies|not true|untrue|false alarm|hoax|debunked|no evidence)\b|"
+    r"mohon|mohoi|nuk është e vërtetë|e pavërtetë|alarm i rremë|"
+    r"dementiert|bestreitet|nicht wahr|falscher alarm", re.I)
+RELIABLE = 0.75
+
+
+def auto_verification(sigs: list[dict]) -> dict:
+    """Verification status from the evidence alone, with reasons; an analyst can still override it.
+
+      confirmed       an official/advisory source and another reliable source, or 3+ independent reliable sources
+      partial         an official source, or 2 independent reliable sources
+      investigating   one reliable source
+      unverified      only low-reliability sources, social media or foreign state media
+      disproved       a reliable source denies it and no official source confirms it
+    """
+    indep = independent(sigs)
+    role = lambda s: str(s.get("source_type", "")).split(" ")[0]  # noqa: E731
+    trusted = [s for s in indep if s["source_reliability"] >= RELIABLE and role(s) not in ("state-media", "social")]
+    reliable_sources = sorted({s["source_name"] for s in trusted})
+    official = sorted({s["source_name"] for s in trusted if role(s) in ("official", "advisory") and s.get("claim") != "alleged"})
+    deniers = sorted({s["source_name"] for s in trusted if _DENIAL.search(f"{s['title']}. {s['text']}")})
+    about_disinfo = any(s["category"] == "disinformation" for s in sigs)
+    only_state = all(role(s) in ("state-media", "state-aligned") for s in sigs)
+    n = len(reliable_sources)
+
+    reasons: list[dict] = []
+    if official:
+        reasons.append({"k": "official", "names": official[:3]})
+    if n:
+        reasons.append({"k": "indep", "n": n})
+    if deniers and not about_disinfo:
+        reasons.append({"k": "denial", "names": deniers[:3]})
+    if only_state:
+        reasons.append({"k": "state_only"})
+    elif not n:
+        reasons.append({"k": "low_rel"})
+
+    if deniers and not about_disinfo and not official:
+        status, conf = "disproved", 0.6 + 0.1 * min(2, len(deniers))
+    elif official and n >= 2:
+        status, conf = "confirmed", min(0.95, 0.85 + 0.03 * (n - 2))
+    elif n >= 3:
+        status, conf = "confirmed", min(0.92, 0.78 + 0.03 * (n - 3))
+    elif official or n == 2:
+        status, conf = "partial", 0.7
+    elif n == 1:
+        status, conf = "investigating", 0.55
+    else:
+        status, conf = "unverified", 0.6 if only_state else 0.45
+    return {"status": status, "confidence": round(conf, 2), "reasons": reasons, "reliable_sources": reliable_sources[:8]}
+
+
 # --- alert assessment -------------------------------------------------------------
 def assess_alert(sigs: list[dict], level: str, confidence: float, severity_value: float, now: datetime) -> dict:
     full = " ".join(f"{s['title']}. {s['text']}" for s in sigs)
@@ -344,4 +400,5 @@ def assess_alert(sigs: list[dict], level: str, confidence: float, severity_value
         "uncertain": confidence < 0.5,
         "targets": list(dict.fromkeys(targets))[:4],
         "subcategories": list(dict.fromkeys(s["subcategory"] for s in sigs if s.get("subcategory")))[:6],
+        "auto_verification": auto_verification(sigs),
     }

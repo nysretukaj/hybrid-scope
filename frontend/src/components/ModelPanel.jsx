@@ -40,8 +40,30 @@ function Metrics({ info }) {
     [t('ml.model'), m.accuracy, m.macro_f1, '#34d399'],
     m.rules_baseline && [t('ml.rules'), m.rules_baseline.accuracy, m.rules_baseline.macro_f1, '#64748b'],
   ].filter(Boolean)
+  const op = m.operating_point
+  const target = Math.round((m.target_precision || 0.9) * 100)
+  const effective = op ? Math.max(op.threshold, info.min_prob || 0) : null
+  const shown = op && (m.curve || []).find((c) => c.threshold >= effective - 1e-9) || op
   return (
     <div className="space-y-3">
+      {m.curve && (
+        <div className={`rounded-lg p-3 ring-1 ${op ? 'bg-emerald-500/10 ring-emerald-500/30' : 'bg-amber-500/10 ring-amber-500/30'}`}>
+          <div className="text-sm font-semibold text-slate-100">
+            {op ? t('ml.opYes', { p: pct(shown.precision), t: Math.round(effective * 100) }) : t('ml.opNo', { p: target })}
+          </div>
+          {op && <div className="mt-1 text-xs text-slate-400">{t('ml.opCoverage', { c: pct(shown.coverage), n: m.cross_validated.support })}</div>}
+          <div className="mt-2 grid grid-cols-4 gap-1 text-center text-[11px]">
+            {m.curve.slice(0, 4).map((c) => (
+              <div key={c.threshold} className="rounded bg-slate-950/50 px-1 py-1">
+                <div className="text-slate-500">≥{Math.round(c.threshold * 100)}%</div>
+                <div className="font-mono text-slate-200">{pct(c.precision)}</div>
+                <div className="text-slate-500">{pct(c.coverage)}</div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-[10px] text-slate-500">{t('ml.opHint')}</p>
+        </div>
+      )}
       <p className="text-xs text-slate-400">{t('ml.metricsHint', { n: m.support })}</p>
       {rows.map(([label, acc, f1, color]) => (
         <div key={label} className="grid grid-cols-[7rem_1fr_3.5rem] items-center gap-2 text-sm">
@@ -217,7 +239,7 @@ export default function ModelPanel({ publicMode, notify }) {
               <div className="mb-3 text-xs text-slate-400">
                 {t('ml.trainedAt', { t: fmtTime(info.trained_at) })} · {t(`ml.feat.${info.features}`)} · {t('ml.trainedOn', { n: info.records })}
               </div>
-              <Metrics info={info} />
+              <Metrics info={{ ...info, min_prob: s.classifier_min_prob }} />
             </>
           ) : <p className="text-sm text-slate-400">{t('ml.notTrained')}</p>}
           {canWrite && (
@@ -228,7 +250,7 @@ export default function ModelPanel({ publicMode, notify }) {
               {ds.total < 30 && <span className="text-[11px] text-amber-300/80">{t('ml.needData')}</span>}
             </div>
           )}
-          <p className="mt-3 text-[11px] leading-relaxed text-slate-500">{t('ml.trainHint', { p: Math.round(s.classifier_min_prob * 100) })}</p>
+          <p className="mt-3 text-[11px] leading-relaxed text-slate-500">{t('ml.trainHint', { p: Math.round(s.target_precision * 100) })}</p>
         </Card>
 
         <Card icon="☁️" title={t('ml.finetune')}>

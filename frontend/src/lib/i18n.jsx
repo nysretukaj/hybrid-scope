@@ -572,6 +572,47 @@ const LOCAL_AI = {
 }
 for (const l of Object.keys(LOCAL_AI)) Object.assign(D[l], LOCAL_AI[l])
 
+// Automatic verification and the 90%-precision decision threshold.
+const AUTO = {
+  en: {
+    'v.auto': 'Decided automatically:', 'v.byAnalyst': 'Set by an analyst:', 'v.backToAuto': 'Back to the automatic status',
+    'v.manual': 'Correct it by hand (optional)',
+    'v.r.official': 'Official source: {names}', 'v.r.indep': '{n} independent reliable source(s)',
+    'v.r.denial': 'Denied by: {names}', 'v.r.state_only': 'Only state-controlled or state-aligned media report it',
+    'v.r.low_rel': 'Only low-reliability sources so far',
+    'h.verification': 'The system sets this status by itself from the evidence: official sources, how many independent reliable sources report it, and denials. You only need to change it if you know better; your status then takes priority.',
+    'ml.opYes': 'When it is at least {t}% sure, the model is right {p} of the time', 'ml.opNo': 'The model has not reached {p}% precision yet: it only votes and never decides on its own',
+    'ml.opCoverage': 'It then decides {c} of the reports by itself (measured on all {n} labelled reports, each tested while left out of training).',
+    'ml.opHint': 'Columns: certainty → correct decisions → share decided. Below the threshold the keyword rules, the local AI or an analyst decide.',
+    'ml.trainHint': 'The threshold is measured again at every training so that the model\'s own decisions are at least {p}% correct.',
+  },
+  sq: {
+    'v.auto': 'Vendosur automatikisht:', 'v.byAnalyst': 'Vendosur nga analisti:', 'v.backToAuto': 'Kthe statusin automatik',
+    'v.manual': 'Korrigjoje me dorë (opsionale)',
+    'v.r.official': 'Burim zyrtar: {names}', 'v.r.indep': '{n} burime të pavarura dhe të besueshme',
+    'v.r.denial': 'Mohuar nga: {names}', 'v.r.state_only': 'E raportojnë vetëm media shtetërore ose pro-qeveritare',
+    'v.r.low_rel': 'Deri tani vetëm burime me besueshmëri të ulët',
+    'h.verification': 'Sistemi e vendos vetë këtë status nga provat: burime zyrtare, sa burime të pavarura e të besueshme e raportojnë dhe mohimet. E ndryshon vetëm nëse di diçka më shumë; atëherë statusi yt ka përparësi.',
+    'ml.opYes': 'Kur është të paktën {t}% i sigurt, modeli ka të drejtë në {p} të rasteve', 'ml.opNo': 'Modeli ende nuk e ka arritur saktësinë {p}%: vetëm voton dhe nuk vendos kurrë vetë',
+    'ml.opCoverage': 'Kështu vendos vetë për {c} të raportimeve (matur në të {n} raportimet e etiketuara, secili i testuar kur ishte jashtë trajnimit).',
+    'ml.opHint': 'Kolonat: siguria → vendime të sakta → pjesa që vendos. Nën prag vendosin rregullat, AI lokale ose analisti.',
+    'ml.trainHint': 'Pragu matet përsëri në çdo trajnim, që vendimet e vetë modelit të jenë të paktën {p}% të sakta.',
+  },
+  de: {
+    'v.auto': 'Automatisch bestimmt:', 'v.byAnalyst': 'Vom Analysten gesetzt:', 'v.backToAuto': 'Zurück zum automatischen Status',
+    'v.manual': 'Von Hand korrigieren (optional)',
+    'v.r.official': 'Offizielle Quelle: {names}', 'v.r.indep': '{n} unabhängige zuverlässige Quelle(n)',
+    'v.r.denial': 'Dementiert von: {names}', 'v.r.state_only': 'Nur staatliche oder regierungsnahe Medien berichten darüber',
+    'v.r.low_rel': 'Bisher nur wenig zuverlässige Quellen',
+    'h.verification': 'Das System setzt diesen Status selbst anhand der Belege: offizielle Quellen, wie viele unabhängige zuverlässige Quellen berichten, und Dementis. Ändern Sie ihn nur, wenn Sie es besser wissen; Ihr Status hat dann Vorrang.',
+    'ml.opYes': 'Ab {t}% Sicherheit liegt das Modell in {p} der Fälle richtig', 'ml.opNo': 'Das Modell hat {p}% Präzision noch nicht erreicht: es stimmt nur mit ab und entscheidet nie allein',
+    'ml.opCoverage': 'Damit entscheidet es {c} der Meldungen selbst (gemessen an allen {n} gelabelten Meldungen, jede getestet, während sie nicht im Training war).',
+    'ml.opHint': 'Spalten: Sicherheit → richtige Entscheidungen → selbst entschiedener Anteil. Darunter entscheiden die Regeln, die lokale KI oder ein Analyst.',
+    'ml.trainHint': 'Die Schwelle wird bei jedem Training neu gemessen, damit die eigenen Entscheidungen des Modells zu mindestens {p}% stimmen.',
+  },
+}
+for (const l of Object.keys(AUTO)) Object.assign(D[l], AUTO[l])
+
 const LangContext = createContext({ lang: 'en', setLang: () => {}, t: (k) => k })
 
 function readStored(key, allowed, fallback) {

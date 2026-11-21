@@ -70,6 +70,52 @@ def _rows(X, idx):
     return X[idx] if isinstance(X, np.ndarray) else [X[i] for i in idx]
 
 
+def _operating_point(kind: str, X, rows: list[int], y: list[str], weights: np.ndarray) -> dict:
+    """How sure must the model be so that its own decisions are right at least TARGET of the time?
+
+    Every labelled report is predicted once while it is left out of training (k-fold cross-validation).
+    For each certainty threshold we measure precision (share of correct decisions above it) and coverage
+    (share of reports it decides); the lowest threshold that reaches the target is used. Below it the
+    model does not decide: the rules, the local AI or an analyst do."""
+    from sklearn.model_selection import StratifiedKFold, cross_val_predict
+
+    target = config.CLASSIFIER_TARGET_PRECISION
+    k = max(2, min(5, min(Counter(y).values())))
+    cv = StratifiedKFold(n_splits=k, shuffle=True, random_state=42)
+    params = {"model__sample_weight": weights[rows]} if kind == "tfidf" else {"sample_weight": weights[rows]}
+    proba = cross_val_predict(_estimator(kind), _rows(X, rows), y, cv=cv, method="predict_proba", params=params)
+    classes = sorted(set(y))  # predict_proba columns follow the sorted class labels
+    pred = [classes[j] for j in proba.argmax(axis=1)]
+    conf = proba.max(axis=1)
+    correct = np.asarray([p == t for p, t in zip(pred, y)])
+
+    curve, chosen = [], None
+    min_decided = max(10, round(0.05 * len(y)))
+    for t in np.round(np.arange(0.5, 0.995, 0.01), 2):
+        decided = conf >= t
+        if decided.sum() < min_decided:
+            break
+        precision = float(correct[decided].mean())
+        point = {"threshold": float(t), "precision": round(precision, 3), "coverage": round(float(decided.mean()), 3),
+                 "decided": int(decided.sum())}
+        if t in (0.5, 0.6, 0.7, 0.8, 0.9, 0.95):
+            curve.append(point)
+        if chosen is None and precision >= target:
+            chosen = point
+    cv_metrics = {k2: v for k2, v in _metrics(y, pred).items() if k2 != "per_class"}
+    return {"cross_validated": {**cv_metrics, "folds": k}, "operating_point": chosen, "curve": curve,
+            "target_precision": target}
+
+
+def decision_threshold() -> float | None:
+    """Certainty above which the trained model may decide on its own (None: it never decides alone)."""
+    meta = info()
+    op = ((meta or {}).get("metrics", {}).get("category") or {}).get("operating_point")
+    if not op:
+        return None
+    return max(config.CLASSIFIER_MIN_PROB, op["threshold"])
+
+
 def train(progress: Callable[[str, int, int], None] | None = None) -> dict:
     from ..analyzer.local import analyze_local
 
@@ -119,6 +165,7 @@ def train(progress: Callable[[str, int, int], None] | None = None) -> dict:
             # the keyword rules on the very same validation texts, for comparison
             rule = [analyze_local(records[i]["title"], records[i]["text"])["category"] for i in va]
             m["rules_baseline"] = {k: v for k, v in _metrics([labels[i] for i in va], rule).items() if k != "per_class"}
+            m.update(_operating_point(kind, X, rows, [labels[i] for i in rows], weights))
         metrics[head] = m
         final = _estimator(kind)
         fit_all = {"model__sample_weight": weights[rows]} if kind == "tfidf" else {"sample_weight": weights[rows]}
@@ -212,11 +259,12 @@ def refine(items: list[tuple[str, str]], analyses: list[dict], allow_embeddings:
     preds = predict([dataset.model_text(t, x) for t, x in items], allow_embeddings)
     if not preds:
         return 0
+    threshold = decision_threshold()  # None: the model never reached the target precision, so it never decides
     changed = 0
     for (title, text), a, p in zip(items, analyses, preds):
         a["ml"] = p
         cat = p.get("category")
-        if not cat or cat["prob"] < config.CLASSIFIER_MIN_PROB or cat["label"] == a["category"]:
+        if threshold is None or not cat or cat["prob"] < threshold or cat["label"] == a["category"]:
             continue
         new, old = cat["label"], a["category"]
         a.update(classify_extra(new, title, text))
