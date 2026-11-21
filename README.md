@@ -76,8 +76,13 @@ disinformation from misinformation, and "unknown" is the default: no intent is a
 type (officially confirmed / allegation / opinion / reported), a **target** when the text names one, a separate
 severity band and confidence band, the **location precision** (city or only the country, shown dashed on the map),
 an **old news** flag and **near-duplicate** detection (syndicated copies are shown but not counted as independent sources).
-Analysts can **correct a category** by hand (the automatic one is kept), and set an alert's **verification status**:
-not checked → being checked → partly confirmed → confirmed / disproved.
+Every alert gets a **verification status automatically** from its evidence (`assess.auto_verification`):
+confirmed (an official source plus another reliable one, or 3+ independent reliable sources), partly
+confirmed (an official source, or 2 reliable ones), being checked (1 reliable source), not checked (only
+low-reliability sources, social media or foreign state media) or disproved (a reliable source denies it and
+no official source confirms it). Copies of one story count once. The reasons are shown with the status.
+Analysts can override the status and **correct a category** by hand (the automatic values are kept); only
+their decisions update source reliability, so the system never learns from its own guesses.
 
 **2. AI analysis layer** (`backend/app/analyzer/`). Pluggable providers:
 | Provider | When | Notes |
@@ -159,7 +164,7 @@ Architecture, from fastest to deepest:
 | Layer | What it does | Code |
 |---|---|---|
 | Keyword rules | always on, instant, explainable | `analyzer/local.py` |
-| **Trained model** | logistic regression on bge-m3 vectors, trained on our labelled reports (gold = analyst, silver = LLM / scenario; rule-only labels are excluded so it does not learn their mistakes). Measured on a held-out split against the rules; corrects them on new reports only when ≥70% sure | `ml/classifier.py`, `ml/dataset.py` |
+| **Trained model** | logistic regression on bge-m3 vectors, trained on our labelled reports (gold = analyst, silver = LLM / scenario; rule-only labels are excluded so it does not learn their mistakes). Measured on a held-out split against the rules and with 5-fold cross-validation. It decides on its own only above the certainty at which its cross-validated decisions were ≥90% correct (`CLASSIFIER_TARGET_PRECISION`, re-measured at every training); below it, it only votes | `ml/classifier.py`, `ml/dataset.py` |
 | **Local LLM** | gemma3:4b with a JSON schema; before each analysis the most similar verified reports are retrieved and shown as worked examples (retrieval-augmented, no GPU needed); reads the article's picture too | `ml/local_llm.py` |
 | Ensemble | rules, trained model, local and cloud LLM vote (weighted by confidence); disagreement lowers confidence; every vote is shown | `analyzer/__init__.py` |
 | Hybrid verification | the local LLM gives a second opinion on an alert: coordinated / possibly / not coordinated / not enough evidence, with reasons and what is missing | `ml/local_llm.py` |

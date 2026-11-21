@@ -228,7 +228,10 @@ OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "240"))      # CPU-only machi
 LOCAL_LLM_FOR_LIVE = os.getenv("LOCAL_LLM_FOR_LIVE", "0") == "1"  # label new live items with the local LLM
 MODELS_DIR = Path(os.getenv("HYBRIDSCOPE_MODELS_DIR", str(DATA_DIR / "models")))
 DATASET_DIR = Path(os.getenv("HYBRIDSCOPE_DATASET_DIR", str(DATA_DIR / "dataset")))
-CLASSIFIER_MIN_PROB = float(os.getenv("CLASSIFIER_MIN_PROB", "0.7"))  # trained model overrides the rules above this
+CLASSIFIER_MIN_PROB = float(os.getenv("CLASSIFIER_MIN_PROB", "0.7"))  # never decide below this certainty
+# The trained model decides on its own only above the certainty at which its decisions were right at
+# least this often in cross-validation (the threshold is measured at every training).
+CLASSIFIER_TARGET_PRECISION = float(os.getenv("CLASSIFIER_TARGET_PRECISION", "0.9"))
 IMAGE_MAX_BYTES = 5 * 1024 * 1024
 IMAGE_MAX_SIDE = 1024
 

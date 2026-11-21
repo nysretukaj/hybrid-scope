@@ -229,6 +229,9 @@ def test_classifier_refines_rules_only_when_confident(fresh, monkeypatch):
     analyses = [analyze_local(t, x) for t, x in items]
     monkeypatch.setattr(classifier, "predict", lambda texts, allow_embeddings=True: [
         {"category": {"label": "cyber", "prob": 0.95}}, {"category": {"label": "cyber", "prob": 0.5}}])
+    monkeypatch.setattr(classifier, "decision_threshold", lambda: None)
+    assert classifier.refine(items, analyses) == 0  # never reached 90% precision: the model does not decide alone
+    monkeypatch.setattr(classifier, "decision_threshold", lambda: 0.9)
     assert classifier.refine(items, analyses) == 1
     assert analyses[0]["category"] == "cyber" and analyses[0]["analyzer"] == "local-ml"
     assert "Trained model" in analyses[0]["rationale"] and "Modeli i trajnuar" in analyses[0]["i18n"]["sq"]["rationale"]
@@ -244,7 +247,8 @@ def test_background_check_never_overwrites_llm_labels(fresh, monkeypatch):
     llm = build_signal(source_name="x", source_type="news", reliability=0.6, title="Concert in Tirana", text="A concert.",
                        url="https://e.org/2", timestamp=utcnow(), analysis={"category": "other", "analyzer": "llm:test"})
     fresh.insert_signals([rules, llm])
-    monkeypatch.setattr(classifier, "predict", lambda texts, allow_embeddings=True: [{"category": {"label": "cyber", "prob": 0.9}}] * len(texts))
+    monkeypatch.setattr(classifier, "predict", lambda texts, allow_embeddings=True: [{"category": {"label": "cyber", "prob": 0.95}}] * len(texts))
+    monkeypatch.setattr(classifier, "decision_threshold", lambda: 0.9)
     assert classifier.refine_stored([rules["id"], llm["id"]]) == 1
     stored = {s["id"]: s for s in fresh.fetch_by_ids([rules["id"], llm["id"]])}
     assert stored[rules["id"]]["category"] == "cyber" and stored[rules["id"]]["analyzer"] == "local-ml"

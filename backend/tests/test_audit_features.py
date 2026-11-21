@@ -102,10 +102,55 @@ def test_severity_and_confidence_are_separate_and_precision_known():
 # --- API ------------------------------------------------------------------------------
 def test_alerts_carry_assessment_and_verification(client):
     a = client.get("/api/alerts").json()["alerts"][0]
-    assert a["verification"] == "unverified"
+    # no analyst yet: the status comes from the evidence
+    assert a["verification_source"] == "auto"
+    assert a["verification"] == a["assessment"]["auto_verification"]["status"]
+    assert a["verification"] in ("unverified", "investigating", "partial", "confirmed", "disproved")
     for k in ("severity_level", "confidence_level", "impact", "urgency", "scope", "evidence_quality"):
         assert k in a["assessment"]
     assert a["geo_precision"] in ("city", "country")
+
+
+def _ev(name, rel, stype="news", title="Explosion at substation in Pristina", claim="reported", cat="infrastructure"):
+    from app.normalize import utcnow
+
+    return {"id": name, "source_name": name, "source_reliability": rel, "source_type": stype, "title": title,
+            "text": title, "claim": claim, "category": cat, "timestamp": utcnow().isoformat()}
+
+
+def test_automatic_verification_from_evidence():
+    from app.assess import auto_verification
+
+    three = [_ev("a.com", 0.8), _ev("b.com", 0.85), _ev("c.com", 0.9)]
+    assert auto_verification(three)["status"] == "confirmed"
+    official = [_ev("Policia e Kosovës", 0.9, "official (sq)"), _ev("b.com", 0.8)]
+    res = auto_verification(official)
+    assert res["status"] == "confirmed" and res["confidence"] >= 0.85 and res["reasons"][0]["k"] == "official"
+    assert auto_verification([_ev("a.com", 0.8), _ev("b.com", 0.8)])["status"] == "partial"
+    assert auto_verification([_ev("a.com", 0.8)])["status"] == "investigating"
+    assert auto_verification([_ev("blog", 0.4), _ev("Mastodon", 0.4, "social")])["status"] == "unverified"
+    state = auto_verification([_ev("Sputnik Srbija", 0.9, "state-media (sr)")])  # even if misconfigured as reliable
+    assert state["status"] == "unverified" and {"k": "state_only"} in state["reasons"]
+    denied = [_ev("a.com", 0.8), _ev("Policy statement", 0.85, "news", title="Police denied reports of an explosion")]
+    assert auto_verification(denied)["status"] == "disproved"
+    # a fact-checker calling a claim false CONFIRMS a disinformation campaign, it does not disprove it
+    disinfo = [_ev("Hibrid.info", 0.85, "fact-check (sq)", title="Hoax about power cuts debunked", cat="disinformation"),
+               _ev("x.com", 0.8, cat="disinformation")]
+    assert auto_verification(disinfo)["status"] == "partial"
+    # copies of one story are one source
+    copies = [{**_ev("a.com", 0.8), "id": "1"}, {**_ev("b.com", 0.8), "id": "2", "duplicate_of": "1"},
+              {**_ev("c.com", 0.8), "id": "3", "duplicate_of": "1"}]
+    assert auto_verification(copies)["status"] == "investigating"
+
+
+def test_analyst_overrides_the_automatic_status(client):
+    a = client.get("/api/alerts").json()["alerts"][0]
+    client.post(f"/api/alerts/{a['id']}/feedback", json={"verdict": "disproved"})
+    b = client.get(f"/api/alerts/{a['id']}").json()
+    assert b["verification"] == "disproved" and b["verification_source"] == "analyst"
+    client.post(f"/api/alerts/{a['id']}/feedback", json={"verdict": "unverified"})  # clears the override
+    c = client.get(f"/api/alerts/{a['id']}").json()
+    assert c["verification_source"] == "auto" and c["verification"] == a["verification"]
 
 
 def test_verification_status_workflow(client):

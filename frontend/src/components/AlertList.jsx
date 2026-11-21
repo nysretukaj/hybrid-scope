@@ -38,7 +38,7 @@ export default function AlertList({ alerts, selectedId, onSelect, total }) {
                     {!a.synthetic && <LiveBadge />}
                     {verdict !== 'unverified' && (
                       <span className="rounded-full px-1.5 text-[10px] ring-1" style={{ color: vstyle.color, '--tw-ring-color': `${vstyle.color}66` }}>
-                        {vstyle.icon} {t(`v.${verdict}`)}
+                        {a.verification_source === 'auto' ? '🤖' : '✍️'} {vstyle.icon} {t(`v.${verdict}`)}
                       </span>
                     )}
                   </div>

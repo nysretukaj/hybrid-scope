@@ -169,6 +169,23 @@ function Ttps({ ttps, onJump }) {
 }
 
 /** Verification status in five simple steps, from "not checked yet" to "confirmed" or "disproved". */
+function reasonText(t, r) {
+  if (r.k === 'official') return t('v.r.official', { names: r.names.join(', ') })
+  if (r.k === 'indep') return t('v.r.indep', { n: r.n })
+  if (r.k === 'denial') return t('v.r.denial', { names: r.names.join(', ') })
+  return t(`v.r.${r.k}`)
+}
+
+function StatusPill({ status, t }) {
+  const style = VERIFICATION[status] || VERIFICATION.unverified
+  return (
+    <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold text-slate-950" style={{ background: style.color }}>
+      {style.icon} {t(`v.${status}`)}
+    </span>
+  )
+}
+
+/** The status is decided automatically from the evidence; an analyst may override it (optional). */
 function VerificationBar({ alert, onFeedback, notifyEnabled, onNotify, publicMode }) {
   const { t } = useI18n()
   const [note, setNote] = useState('')
@@ -176,6 +193,8 @@ function VerificationBar({ alert, onFeedback, notifyEnabled, onNotify, publicMod
   const run = async (fn) => { setBusy(true); try { await fn() } finally { setBusy(false) } }
   const current = alert.verification || 'unverified'
   const fb = alert.feedback
+  const auto = alert.assessment?.auto_verification
+  const byAnalyst = alert.verification_source === 'analyst'
 
   return (
     <div className="mt-4 rounded-lg bg-slate-950/50 p-3 ring-1 ring-slate-800">
@@ -183,12 +202,39 @@ function VerificationBar({ alert, onFeedback, notifyEnabled, onNotify, publicMod
         <span className="flex items-center text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
           {t('v.title')}<Help term="verification" />
         </span>
-        {fb?.note && <span className="text-xs italic text-slate-400">“{fb.note}”</span>}
-        {fb?.at && <span className="text-[11px] text-slate-600">{timeAgo(fb.at)}</span>}
       </div>
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('v.title')}>
-        {VERIFICATION_ORDER.map((v) => {
-          const active = v === current
+
+      {auto && (
+        <div className={`rounded-lg p-2.5 ring-1 ring-slate-800 ${byAnalyst ? 'opacity-60' : ''}`}>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+            🤖 {t('v.auto')} <StatusPill status={auto.status} t={t} />
+            <span>{t('d.confidence')} <span className="font-mono text-slate-200">{pct(auto.confidence)}</span></span>
+          </div>
+          <ul className="mt-1.5 space-y-0.5 text-xs text-slate-300">
+            {auto.reasons.map((r) => <li key={r.k}>• {reasonText(t, r)}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {byAnalyst && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-300">
+          ✍️ {t('v.byAnalyst')} <StatusPill status={current} t={t} />
+          {fb?.note && <span className="italic text-slate-400">“{fb.note}”</span>}
+          {fb?.at && <span className="text-[11px] text-slate-600">{timeAgo(fb.at)}</span>}
+          {!publicMode && (
+            <button disabled={busy} onClick={() => run(() => onFeedback('unverified', ''))}
+              className="ml-auto rounded-md px-2 py-1 text-[11px] text-slate-400 ring-1 ring-slate-700 hover:text-slate-200">
+              ↺ {t('v.backToAuto')}
+            </button>
+          )}
+        </div>
+      )}
+
+      <details className="mt-2">
+        <summary className="cursor-pointer text-[11px] text-slate-500 hover:text-slate-300">{t('v.manual')}</summary>
+      <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label={t('v.title')}>
+        {VERIFICATION_ORDER.filter((v) => v !== 'unverified' || byAnalyst).map((v) => {
+          const active = byAnalyst && v === current
           const style = VERIFICATION[v]
           return (
             <button key={v} disabled={busy || publicMode || active} onClick={() => run(() => onFeedback(v, note))}
@@ -212,6 +258,7 @@ function VerificationBar({ alert, onFeedback, notifyEnabled, onNotify, publicMod
           <div className="w-full text-[10px] text-slate-600">{t('v.hint')}</div>
         </div>
       )}
+      </details>
     </div>
   )
 }

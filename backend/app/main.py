@@ -293,7 +293,10 @@ def _alerts(source: str = "all", lang: str = "en", hours: float | None = None):
     feedback = db.get_feedback()
     for a in alerts:
         fb = feedback.get(a["id"])
-        a["verification"] = fb["verdict"] if fb else "unverified"
+        auto = (a.get("assessment") or {}).get("auto_verification") or {"status": "unverified"}
+        # the evidence decides; an analyst's status, when set, overrides it
+        a["verification"] = fb["verdict"] if fb else auto["status"]
+        a["verification_source"] = "analyst" if fb else "auto"
         a["feedback"] = fb and {"verdict": fb["verdict"], "note": fb["note"], "at": fb["created_at"]}
     return alerts, now
 
@@ -403,7 +406,8 @@ def stats(source: str = "all", hours: Optional[float] = None, lang: str = "en"):
         "hybrid_alerts": sum(1 for a in alerts if a["is_hybrid"]),
         "critical_alerts": sum(1 for a in alerts if a["level"] == "CRITICAL"),
         "infrastructure_alerts": sum(1 for a in alerts if "infrastructure" in a["categories"]),
-        "reviewed_alerts": sum(1 for a in alerts if a["verification"] != "unverified"),
+        "reviewed_alerts": sum(1 for a in alerts if a["verification_source"] == "analyst"),
+        "auto_verified": sum(1 for a in alerts if a["verification_source"] == "auto"),
         "duplicates": sum(1 for s in sigs if s.get("duplicate_of")),
         "unlocated": sum(1 for s in relevant if s.get("lat") is None),
         "by_category": dict(Counter(s["category"] for s in relevant)),
@@ -605,7 +609,9 @@ async def llm_backfill(limit: int = 60):
         raise HTTPException(400, "No LLM configured: set LLM_API_KEY in backend/.env")
     if enrich.STATE["running"]:
         raise HTTPException(409, "LLM enrichment already running")
-    ids = db.fetch_unenriched_live(max(1, min(limit, 500)))
+    limit = max(1, min(limit, 500))
+    serbian = set(serbian_ids(db.fetch_unenriched_live(limit * 3)))  # Serbian is left to the local AI
+    ids = [i for i in db.fetch_unenriched_live(limit * 3) if i not in serbian][:limit]
     return {"queued": len(ids), "started": start_enrichment(ids)}
 
 
@@ -662,6 +668,8 @@ def ml_status():
         "job": jobs.status(),
         "local_llm_for_live": config.LOCAL_LLM_FOR_LIVE,
         "classifier_min_prob": config.CLASSIFIER_MIN_PROB,
+        "decision_threshold": classifier.decision_threshold(),
+        "target_precision": config.CLASSIFIER_TARGET_PRECISION,
     }
 
 
