@@ -67,6 +67,13 @@ def chat_model() -> str | None:
     return None
 
 
+def ft_model() -> str | None:
+    """The fine-tuned fact-check model (training/export_ollama.py), when it is installed."""
+    if not available() or not config.OLLAMA_FT_MODEL:
+        return None
+    return config.OLLAMA_FT_MODEL if has_model(config.OLLAMA_FT_MODEL) else None
+
+
 def embed_model() -> str | None:
     if not available():
         return None
@@ -156,6 +163,8 @@ def status() -> dict:
         "base_model_ready": has_model(config.OLLAMA_MODEL),
         "custom_model": config.OLLAMA_CUSTOM_MODEL,
         "custom_model_ready": bool(config.OLLAMA_CUSTOM_MODEL) and has_model(config.OLLAMA_CUSTOM_MODEL),
+        "ft_model": config.OLLAMA_FT_MODEL,
+        "ft_model_ready": bool(config.OLLAMA_FT_MODEL) and has_model(config.OLLAMA_FT_MODEL),
         "embed_model": config.OLLAMA_EMBED_MODEL,
         "embed_model_ready": has_model(config.OLLAMA_EMBED_MODEL),
         "last_error": STATUS["last_error"],

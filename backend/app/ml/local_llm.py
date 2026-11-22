@@ -83,6 +83,22 @@ Answer with ONLY a JSON object, all texts in {language}:
  "reasons": ["up to 4 concrete reasons, each pointing to reports"],
  "missing_evidence": ["what would confirm or refute it, up to 3"]}}"""
 
+# Fake-news check by the fine-tuned model. The prompt must stay word for word the one it was trained with
+# (training/prepare_finetune.py, CLAIM_SYSTEM and the "TEXT: " prefix, at most 700 characters).
+CLAIM_SYSTEM = (
+    "You are a fact-checking analyst. Decide whether the text below is DISINFORMATION (a false or misleading "
+    "claim, e.g. a known propaganda narrative) or CREDIBLE (factual reporting). Respond with ONLY a JSON object: "
+    '{"verdict": "disinformation" | "credible", "reason": "one short sentence in English"}'
+)
+CLAIM_MAX_TEXT = 700
+FACT_SCHEMA = {
+    "type": "object",
+    "properties": {"verdict": {"type": "string", "enum": ["disinformation", "credible"]}, "reason": {"type": "string"}},
+    "required": ["verdict", "reason"],
+}
+# Measured in Ollama on 200 held-out texts never used in training (EUvsDisinfo + Polyglot), see training/README.md
+FACT_CHECK_EVAL = {"n": 200, "accuracy": 0.83, "precision": 0.77, "recall": 0.95, "base_accuracy": 0.70}
+
 LANG_NAME = {"en": "English", "sq": "Albanian", "de": "German"}
 EXAMPLE_LIMIT = 3
 _INDEX: dict = {"key": None, "records": [], "matrix": None}
@@ -221,3 +237,20 @@ def verify_alert(alert: dict, lang: str = "en") -> dict | None:
         "model": model,
         "seconds": round(time.monotonic() - started, 1),
     }
+
+
+def fact_check(title: str, text: str) -> dict | None:
+    """Disinformation or credible? Answer of the fine-tuned model; None when it is not installed or fails."""
+    model = ollama.ft_model()
+    if not model:
+        return None
+    started = time.monotonic()
+    body = f"{title}. {text}" if title.strip() and title.strip() not in text else text
+    content = "TEXT: " + " ".join(body.split())[:CLAIM_MAX_TEXT]
+    data = ollama.chat_json([{"role": "system", "content": CLAIM_SYSTEM}, {"role": "user", "content": content}],
+                            FACT_SCHEMA, model=model, num_ctx=2048)
+    verdict = str((data or {}).get("verdict") or "").strip().lower()
+    if verdict not in ("disinformation", "credible"):
+        return None
+    return {"verdict": verdict, "reason": str(data.get("reason") or "").strip()[:300], "model": model,
+            "measured": FACT_CHECK_EVAL, "seconds": round(time.monotonic() - started, 1)}

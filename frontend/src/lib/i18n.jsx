@@ -645,6 +645,29 @@ const IMAGES = {
 }
 for (const l of Object.keys(IMAGES)) Object.assign(D[l], IMAGES[l])
 
+// Fake-news check by the fine-tuned Gemma 3 1B (hybridscope-ft)
+const FACT = {
+  en: {
+    'a.fact': 'Fake-news check', 'a.fact.disinformation': 'Likely disinformation', 'a.fact.credible': 'Looks credible',
+    'a.fact.model': 'Our fine-tuned model {model}', 'a.fact.reasonEn': 'Reason (in English)',
+    'a.fact.measured': 'Tested on {n} texts it never saw: {acc}% correct, {prec}% precise (untrained: {base}%).',
+    'a.fact.hint': 'A second opinion only: always check the source.',
+  },
+  sq: {
+    'a.fact': 'Kontrolli i lajmeve të rreme', 'a.fact.disinformation': 'Ka gjasa të jetë dezinformim', 'a.fact.credible': 'Duket i besueshëm',
+    'a.fact.model': 'Modeli ynë i trajnuar {model}', 'a.fact.reasonEn': 'Arsyeja (në anglisht)',
+    'a.fact.measured': 'I testuar në {n} tekste që nuk i ka parë: {acc}% i saktë, {prec}% precision (pa trajnim: {base}%).',
+    'a.fact.hint': 'Vetëm mendim i dytë: kontrolloni gjithmonë burimin.',
+  },
+  de: {
+    'a.fact': 'Falschmeldungs-Check', 'a.fact.disinformation': 'Wahrscheinlich Desinformation', 'a.fact.credible': 'Wirkt glaubwürdig',
+    'a.fact.model': 'Unser feinabgestimmtes Modell {model}', 'a.fact.reasonEn': 'Begründung (auf Englisch)',
+    'a.fact.measured': 'Getestet an {n} unbekannten Texten: {acc}% richtig, {prec}% Präzision (untrainiert: {base}%).',
+    'a.fact.hint': 'Nur eine zweite Meinung: Quelle immer prüfen.',
+  },
+}
+for (const l of Object.keys(FACT)) Object.assign(D[l], FACT[l])
+
 const LangContext = createContext({ lang: 'en', setLang: () => {}, t: (k) => k })
 
 function readStored(key, allowed, fallback) {

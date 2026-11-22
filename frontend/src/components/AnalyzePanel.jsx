@@ -54,6 +54,29 @@ function Votes({ result }) {
   )
 }
 
+/** Fake-news verdict of our fine-tuned Gemma 3 1B, with how well it scored on unseen texts. */
+function FactCheck({ fc }) {
+  const { t } = useI18n()
+  if (!fc) return null
+  const fake = fc.verdict === 'disinformation'
+  const m = fc.measured || {}
+  return (
+    <div className={`rounded-lg p-3 text-xs ring-1 ${fake ? 'bg-red-500/10 ring-red-500/40' : 'bg-emerald-500/10 ring-emerald-500/30'}`}>
+      <div className="mb-1 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-widest text-slate-500">
+        🔎 {t('a.fact')}
+        <span className="ml-auto normal-case tracking-normal text-slate-400">{t('a.fact.model', { model: fc.model })} · {fc.seconds}s</span>
+      </div>
+      <div className={`text-sm font-semibold ${fake ? 'text-red-300' : 'text-emerald-300'}`}>{fake ? '⚠️' : '✓'} {t(`a.fact.${fc.verdict}`)}</div>
+      {fc.reason && <p className="mt-1 text-slate-300"><span className="text-slate-500">{t('a.fact.reasonEn')}: </span>{fc.reason}</p>}
+      {m.n && (
+        <p className="mt-1.5 text-[11px] text-slate-500">
+          {t('a.fact.measured', { n: m.n, acc: Math.round(m.accuracy * 100), prec: Math.round(m.precision * 100), base: Math.round(m.base_accuracy * 100) })} {t('a.fact.hint')}
+        </p>
+      )}
+    </div>
+  )
+}
+
 export default function AnalyzePanel({ localAi }) {
   const { t, lang } = useI18n()
   const [samples, setSamples] = useState(SAMPLES)
@@ -179,6 +202,7 @@ export default function AnalyzePanel({ localAi }) {
               </div>
             )}
             <p className="text-slate-300">{result.rationale}</p>
+            <FactCheck fc={result.fact_check} />
             {(result.image_preview || result.image_findings) && (
               <div className="flex gap-3 rounded-lg bg-slate-950/60 p-3 ring-1 ring-slate-800">
                 {result.image_preview && <img src={`data:image/jpeg;base64,${result.image_preview}`} alt="" className="h-20 w-20 shrink-0 rounded object-cover" />}

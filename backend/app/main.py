@@ -652,6 +652,8 @@ def analyze_text(req: AnalyzeRequest):
     if result["analyzer"].startswith("llm:") and not image_b64:
         db.cache_put(key, req.title, req.text, result, iso(utcnow()))  # replayable in the offline demo
     out = _localized_analysis(result, req.lang)
+    if req.use_local:  # fake-news check by our fine-tuned model (English reason; it reads any of our languages)
+        out["fact_check"] = local_llm.fact_check(req.title, req.text)
     if config.DEMO_OFFLINE:
         out["offline"] = True
     if image_b64:

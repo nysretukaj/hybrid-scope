@@ -224,6 +224,9 @@ OLLAMA_ENABLED = os.getenv("OLLAMA_ENABLED", "auto").strip().lower()
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:4b")            # reads text and images
 OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "bge-m3")   # multilingual text embeddings
 OLLAMA_CUSTOM_MODEL = os.getenv("OLLAMA_CUSTOM_MODEL", "hybridscope")  # built by POST /api/ml/create-model
+# Gemma 3 1B fine-tuned (LoRA) on our reports + EUvsDisinfo + Polyglot fake news; does the fake-news check.
+# Built with training/finetune_cpu.py + export_ollama.py; empty = no fake-news check.
+OLLAMA_FT_MODEL = os.getenv("OLLAMA_FT_MODEL", "hybridscope-ft")
 OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "240"))      # CPU-only machines are slow
 LOCAL_LLM_FOR_LIVE = os.getenv("LOCAL_LLM_FOR_LIVE", "0") == "1"  # label new live items with the local LLM
 MODELS_DIR = Path(os.getenv("HYBRIDSCOPE_MODELS_DIR", str(DATA_DIR / "models")))

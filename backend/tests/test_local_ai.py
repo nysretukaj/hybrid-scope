@@ -86,6 +86,9 @@ def fake_ollama(monkeypatch):
     def chat_json(messages, schema=None, model=None, temperature=0.0, num_ctx=8192):
         calls["chat"].append({"messages": messages, "schema": schema})
         props = (schema or {}).get("properties", {})
+        if "reason" in props:  # fake-news check of the fine-tuned model
+            fake = "deepfake" in messages[-1]["content"].lower()
+            return {"verdict": "disinformation" if fake else "credible", "reason": "fake fact check"}
         if "verdict" in props:
             return {"verdict": "coordinated", "confidence": 0.8, "summary": "Linked reports.",
                     "reasons": ["shared actor"], "missing_evidence": ["official attribution"]}
@@ -436,3 +439,14 @@ def test_public_mode_protects_training(client, monkeypatch):
     for path in ("/api/ml/train", "/api/ml/label", "/api/ml/export", "/api/ml/create-model"):
         assert client.post(path).status_code == 403
     assert client.get("/api/ml/status").status_code == 200
+
+
+def test_fact_check_by_fine_tuned_model(client, fake_ollama):
+    r = client.post("/api/analyze", json={"text": "A deepfake video of the prime minister announces mobilisation",
+                                          "use_llm": False}).json()
+    assert r["fact_check"]["verdict"] == "disinformation"
+    assert r["fact_check"]["model"] == "hybridscope-ft" and r["fact_check"]["measured"]["precision"] == 0.77
+    sent = [c for c in fake_ollama["chat"] if "reason" in (c["schema"] or {}).get("properties", {})][-1]["messages"]
+    assert sent[0]["content"].startswith("You are a fact-checking analyst") and sent[1]["content"].startswith("TEXT: ")
+    off = client.post("/api/analyze", json={"text": "Ransomware hit a hospital", "use_llm": False, "use_local": False}).json()
+    assert off.get("fact_check") is None

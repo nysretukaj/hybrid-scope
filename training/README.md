@@ -61,3 +61,32 @@ Check that the fine-tuned model is better before keeping it: run the same texts 
 
 Note: `finetune_lora.py --check` was run locally to validate the data. The GPU part has to run on
 Colab and depends on the versions of `unsloth`/`trl` installed there.
+
+## Fine-tuned Gemma 3 1B (fake-news check)
+
+The LLM weights themselves trained with LoRA on a normal laptop CPU (no GPU, ~3.5 h):
+
+```
+python training/prepare_finetune.py --raw <dir with euvsdisinfo.csv, polyglot_fake.xlsx, polyglot_real.xlsx> --out <ft>/data
+python training/finetune_cpu.py --base <ft>/base --data <ft>/data --out <ft>/out
+python training/export_ollama.py --base <ft>/base --out <ft>/out --name hybridscope-ft --llamacpp <llama.cpp checkout>
+python training/eval_finetune.py --data <ft>/data --models hybridscope-ft
+```
+
+Data: our labelled reports (classification) + EUvsDisinfo (debunked pro-Kremlin claims, Balkans first) and
+Polyglot fake/real news (English translation) for "disinformation" vs "credible". 1098 training rows,
+267 test rows that never reach training (stable hash split).
+
+Results on the 267 test rows (claim check = 200 of them):
+
+| | Gemma 3 1B untrained | fine-tuned, in Ollama (q8_0) |
+|---|---|---|
+| fake-news check accuracy | 70% | **83%** |
+| precision for "disinformation" | 63% | **77%** |
+| recall for "disinformation" | 95% | 95% |
+| report category accuracy | 45% | 72% |
+
+The app uses it as `OLLAMA_FT_MODEL` (default `hybridscope-ft`): every local analysis gets a
+"Fake-news check" card. The prompt in `backend/app/ml/local_llm.py` (CLAIM_SYSTEM) must stay identical to
+the one in `prepare_finetune.py`. Ollama 0.40 cannot import Gemma 3 safetensors (MLX engine), hence the GGUF step;
+the Modelfile template puts the system text inside the first user turn, exactly like Gemma's chat template.
